@@ -1,0 +1,910 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* OneForma-inspired Clean Light Canvas with Safety Green Accents */
+  --bg-app: #F4F7F5;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --bg-subtle: #F8FAF9;
+  --bg-hover: #ECFDF5;
+
+  --border-hairline: #E2E8F0;
+  --border-subtle: #E6EDEA;
+  --border-active: #10B981;
+  
+  --text-main: #0F172A;
+  --text-sub: #334155;
+  --text-muted: #64748B;
+
+  /* Emerald Green Primary Theme */
+  --primary: #10B981;
+  --primary-dark: #059669;
+  --primary-darker: #064E3B;
+  --primary-light: #ECFDF5;
+  --primary-border: #A7F3D0;
+
+  /* Emerald Green Accents */
+  --accent-green: #10B981;
+  --accent-green-dark: #059669;
+  --accent-green-light: #ECFDF5;
+  --accent-green-border: #10B981;
+  --accent-green-border-subtle: #A7F3D0;
+
+  /* Alert Red */
+  --alert-red: #EF4444;
+  --alert-red-dark: #DC2626;
+  --alert-red-light: #FEF2F2;
+  --alert-red-border: #FECACA;
+
+  /* Alert Amber */
+  --alert-amber: #F59E0B;
+  --alert-amber-light: #FFFBEB;
+  --alert-amber-border: #FDE68A;
+
+  /* Soft modern radii */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
+  --radius-pill: 9999px;
+
+  /* Elevation Shadows */
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.03);
+  --shadow-card: 0 4px 20px rgba(15, 23, 42, 0.05);
+  --shadow-card-active: 0 12px 32px rgba(16, 185, 129, 0.16);
+  --shadow-floating: 0 20px 48px -10px rgba(15, 23, 42, 0.08);
+  --shadow-glass: 0 14px 37px -9px rgba(16, 185, 129, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Minimalist Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D8DEE9;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B6C2D4;
+}
+
+/* Modern Pill & Card Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  border-color: var(--primary-dark);
+  color: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-dark);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-outline {
+  background-color: #FFFFFF;
+  border-color: var(--border-hairline);
+  color: var(--text-main);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-outline:hover {
+  background-color: var(--bg-hover);
+  border-color: #D1D5DB;
+}
+
+.btn-outline-green {
+  background-color: #FFFFFF;
+  border-color: var(--accent-green-border);
+  color: var(--accent-green-dark);
+}
+
+.btn-outline-green:hover {
+  background-color: var(--accent-green-light);
+}
+
+.btn-pill {
+  border-radius: var(--radius-pill);
+}
+
+/* Modern Status Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.01em;
+}
+
+.badge-active {
+  background-color: var(--accent-green-light);
+  color: var(--accent-green-dark);
+  border: 1px solid var(--accent-green-border-subtle);
+}
+
+.badge-green {
+  background-color: var(--accent-green-light);
+  color: var(--accent-green-dark);
+  border: 1px solid var(--accent-green-border-subtle);
+}
+
+.badge-emergency {
+  background-color: var(--alert-red-light);
+  color: var(--alert-red-dark);
+  border: 1px solid var(--alert-red-border);
+}
+
+.badge-distress {
+  background-color: var(--alert-amber-light);
+  color: #B45309;
+  border: 1px solid var(--alert-amber-border);
+}
+
+.badge-neutral {
+  background-color: var(--bg-subtle);
+  color: var(--text-sub);
+  border: 1px solid var(--border-hairline);
+}
+
+/* Dispatch Card Styles */
+.dispatch-card {
+  background-color: #FFFFFF;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-hairline);
+  padding: 1.1rem;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-card);
+  position: relative;
+}
+
+.dispatch-card:hover {
+  border-color: #CBD5E1;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  transform: translateY(-2px);
+}
+
+.dispatch-card-active {
+  border-color: var(--primary) !important;
+  box-shadow: var(--shadow-card-active) !important;
+  background-color: #FFFFFF;
+}
+
+.dispatch-card-emergency {
+  border-color: var(--alert-red) !important;
+}
+
+.dispatch-card-emergency:hover {
+  border-color: var(--alert-red) !important;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.15) !important;
+}
+
+.dispatch-card-emergency.dispatch-card-active {
+  border-color: var(--alert-red) !important;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.25) !important;
+}
+
+.dispatch-card-distress {
+  border-color: var(--alert-amber) !important;
+}
+
+.dispatch-card-distress:hover {
+  border-color: var(--alert-amber) !important;
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.15) !important;
+}
+
+.dispatch-card-distress.dispatch-card-active {
+  border-color: var(--alert-amber) !important;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.25) !important;
+}
+
+/* Route Timeline in Cards */
+.route-timeline {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  margin: 0.85rem 0;
+  padding-left: 1.75rem;
+}
+
+.route-timeline-line {
+  position: absolute;
+  left: 9px;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    #CBD5E1 0,
+    #CBD5E1 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.route-node {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 0.75rem;
+}
+
+.route-node-icon-start {
+  position: absolute;
+  left: -1.75rem;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background-color: var(--primary);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-node-icon-end {
+  position: absolute;
+  left: -1.75rem;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+  border: 2px solid var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Map Floating Marker Chips */
+.gmap-chip-tag {
+  background-color: #FFFFFF;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.75rem;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.14);
+  border: 1px solid var(--border-hairline);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transform: translate(-50%, -48px);
+  position: absolute;
+  cursor: pointer;
+  pointer-events: auto;
+  white-space: nowrap;
+  transition: transform 0.15s ease;
+}
+
+.gmap-chip-tag:hover {
+  transform: translate(-50%, -52px) scale(1.04);
+}
+
+.gmap-chip-tag-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: var(--accent-green-light);
+  border: 1.5px solid var(--primary);
+  color: var(--accent-green-dark);
+  font-weight: 600;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.gmap-chip-tag-icon-red {
+  background-color: #FEF2F2;
+  border-color: var(--alert-red);
+  color: var(--alert-red-dark);
+}
+
+.profile-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: #ECFDF5;
+  border: 1.5px solid var(--primary);
+  color: #059669;
+  font-weight: 600;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.profile-avatar-emergency {
+  background-color: #FEF2F2 !important;
+  border-color: #EF4444 !important;
+  color: #DC2626 !important;
+}
+
+.profile-avatar-distress {
+  background-color: #FFFBEB !important;
+  border-color: #F59E0B !important;
+  color: #D97706 !important;
+}
+
+/* Radar Rings */
+@keyframes radar-pulse-fast {
+  0% { transform: scale(0.6); opacity: 1; }
+  50% { transform: scale(1.8); opacity: 0.45; }
+  100% { transform: scale(3); opacity: 0; }
+}
+
+@keyframes radar-pulse-green {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  50% { transform: scale(1.6); opacity: 0.35; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+.radar-ring {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: radar-pulse-fast 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+.radar-ring-red {
+  border: 2px solid rgba(239, 68, 68, 0.9);
+  background-color: rgba(239, 68, 68, 0.18);
+}
+
+.radar-ring-green {
+  border: 1.5px solid rgba(16, 185, 129, 0.8);
+  background-color: rgba(16, 185, 129, 0.12);
+  animation: radar-pulse-green 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+.radar-ring-amber {
+  border: 1.5px solid rgba(245, 158, 11, 0.85);
+  background-color: rgba(245, 158, 11, 0.14);
+  animation: radar-pulse-green 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+/* Navigation Rail Icon Buttons */
+.nav-rail-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.nav-rail-btn:hover {
+  color: var(--text-main);
+  background-color: var(--bg-hover);
+}
+
+.nav-rail-btn-active {
+  background-color: var(--accent-green-light) !important;
+  color: var(--accent-green-dark) !important;
+}
+
+/* Tables */
+.min-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.8125rem;
+}
+
+.min-table th {
+  padding: 0.75rem 1rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: #FAFAFC;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.min-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-hairline);
+  color: var(--text-main);
+}
+
+.min-table tr:hover {
+  background-color: var(--bg-hover);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background-color: #FFFFFF;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-floating);
+}
+
+/* Smooth Auto-Expanding Hover Sidebar */
+.app-sidebar {
+  width: 82px;
+  background-color: #FFFFFF;
+  border-right: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.5rem 0.85rem;
+  flex-shrink: 0;
+  z-index: 50;
+  transition: width 0.26s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.26s ease;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.app-sidebar:hover {
+  width: 250px;
+  box-shadow: 4px 0 28px rgba(15, 23, 42, 0.09);
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 52px;
+  border-radius: 14px;
+  color: var(--text-sub);
+  text-decoration: none;
+  overflow: hidden;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.sidebar-nav-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+  transform: translateX(2px);
+}
+
+.sidebar-nav-item-active {
+  background-color: var(--accent-green-light) !important;
+  color: var(--accent-green-dark) !important;
+  border-color: var(--accent-green-border-subtle) !important;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.15);
+}
+
+.sidebar-nav-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-nav-text {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 0.25rem;
+  padding-right: 0.85rem;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-sidebar:hover .sidebar-nav-text {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Floating Map Panel Toggles */
+.gmap-floating-panel-toggle {
+  position: absolute;
+  z-index: 30;
+  background-color: #FFFFFF;
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-pill);
+  padding: 0.45rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gmap-floating-panel-toggle:hover {
+  background-color: #FFFFFF;
+  color: var(--primary);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.2);
+  transform: scale(1.03);
+}
+
+/* Collapsible Map Side Panels */
+.map-side-panel {
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), 
+              opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+              transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* =========================================================
+   OneForma Design System Parity Utilities (White & Emerald)
+   ========================================================= */
+
+/* Display Typography using Manrope */
+.display-mega {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(38px, 4.5vw, 62px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  color: var(--text-main);
+}
+
+.display-xl {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(32px, 3.5vw, 48px);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: var(--text-main);
+}
+
+.display-lg {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(26px, 2.8vw, 38px);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: var(--text-main);
+}
+
+.lede {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: clamp(15px, 1.2vw, 18px);
+  line-height: 1.6;
+  color: var(--text-sub);
+}
+
+/* OneForma signature italicized accent */
+.accent-italic {
+  font-style: italic;
+  color: var(--accent-green-dark);
+  font-weight: 500;
+  font-family: var(--font-display);
+}
+
+/* OneForma Floating Glass Stat Card */
+.glass-stat-card {
+  z-index: 10;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 14px;
+  padding: 0.85rem 1.25rem;
+  box-shadow: 0 14px 37px -9px rgba(16, 185, 129, 0.16);
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+}
+
+.glass-stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 44px -8px rgba(16, 185, 129, 0.24);
+}
+
+.glass-stat-val {
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.1;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.glass-stat-unit {
+  color: var(--accent-green-dark);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.glass-stat-label {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Feature Chip Badges (.fw-chip) */
+.fw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #065F46;
+  transition: all 0.2s ease;
+}
+
+.fw-chip::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  flex-shrink: 0;
+}
+
+.fw-chip:hover {
+  background: #DCFCE7;
+  border-color: #86EFAC;
+  transform: translateY(-1px);
+}
+
+/* OneForma Primary Arrow CTA Button */
+.btn-oneforma-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 13px 26px;
+  background-color: var(--primary);
+  color: #FFFFFF;
+  border-radius: 14px;
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-oneforma-primary:hover {
+  background-color: var(--primary-dark);
+  color: #FFFFFF;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+}
+
+.btn-oneforma-primary .btn-arrow-icon {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-oneforma-primary:hover .btn-arrow-icon {
+  transform: translateX(4px);
+}
+
+.btn-oneforma-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 24px;
+  background-color: #FFFFFF;
+  color: var(--text-main);
+  border-radius: 14px;
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1.5px solid var(--border-hairline);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-oneforma-ghost:hover {
+  background-color: var(--bg-subtle);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+  transform: translateY(-2px);
+}
+
+/* Subtle Floating Animation for Hero Visuals */
+@keyframes heroFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-hero-float {
+  animation: heroFloat 6s ease-in-out infinite;
+}
+
+/* Pillar Auto-Transition & Staggered Text Morph Animations */
+@keyframes pillarBadgeFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pillarHeadlineFade {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0px);
+  }
+}
+
+@keyframes pillarDescFade {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0px);
+  }
+}
+
+@keyframes pillarChipsFade {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pillarStatFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-pillar-badge {
+  animation: pillarBadgeFade 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pillar-headline {
+  animation: pillarHeadlineFade 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.04s forwards;
+  opacity: 0;
+}
+
+.animate-pillar-desc {
+  animation: pillarDescFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+  opacity: 0;
+}
+
+.animate-pillar-chips {
+  animation: pillarChipsFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.16s forwards;
+  opacity: 0;
+}
+
+.animate-pillar-stat {
+  animation: pillarStatFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.22s forwards;
+  opacity: 0;
+}
+
+@keyframes pillarProgressBar {
+  0% {
+    transform: scaleY(0);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-pillar-progress {
+  transform-origin: top;
+  animation: pillarProgressBar 5s linear forwards;
+}
+
+
