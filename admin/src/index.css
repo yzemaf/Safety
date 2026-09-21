@@ -384,40 +384,46 @@ html, body, #root {
 }
 
 /* Radar Rings */
-@keyframes radar-pulse-fast {
-  0% { transform: scale(0.6); opacity: 1; }
-  50% { transform: scale(1.8); opacity: 0.45; }
-  100% { transform: scale(3); opacity: 0; }
+@keyframes radar-pulse-red {
+  0% { transform: scale(0.6); opacity: 1; border-color: rgba(239, 68, 68, 1); }
+  50% { transform: scale(1.8); opacity: 0.55; border-color: rgba(239, 68, 68, 0.7); }
+  100% { transform: scale(3); opacity: 0; border-color: rgba(239, 68, 68, 0); }
+}
+
+@keyframes radar-pulse-amber {
+  0% { transform: scale(0.6); opacity: 0.95; border-color: rgba(245, 158, 11, 1); }
+  50% { transform: scale(1.7); opacity: 0.45; border-color: rgba(245, 158, 11, 0.6); }
+  100% { transform: scale(2.6); opacity: 0; border-color: rgba(245, 158, 11, 0); }
 }
 
 @keyframes radar-pulse-green {
-  0% { transform: scale(0.6); opacity: 0.9; }
-  50% { transform: scale(1.6); opacity: 0.35; }
-  100% { transform: scale(2.4); opacity: 0; }
+  0% { transform: scale(0.6); opacity: 0.9; border-color: rgba(16, 185, 129, 1); }
+  50% { transform: scale(1.6); opacity: 0.35; border-color: rgba(16, 185, 129, 0.5); }
+  100% { transform: scale(2.4); opacity: 0; border-color: rgba(16, 185, 129, 0); }
 }
 
 .radar-ring {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
-  animation: radar-pulse-fast 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
 .radar-ring-red {
-  border: 2px solid rgba(239, 68, 68, 0.9);
-  background-color: rgba(239, 68, 68, 0.18);
+  border: 2px solid rgba(239, 68, 68, 0.95);
+  background-color: rgba(239, 68, 68, 0.22);
+  animation: radar-pulse-red 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
 .radar-ring-green {
-  border: 1.5px solid rgba(16, 185, 129, 0.8);
-  background-color: rgba(16, 185, 129, 0.12);
+  border: 1.5px solid rgba(16, 185, 129, 0.85);
+  background-color: rgba(16, 185, 129, 0.14);
   animation: radar-pulse-green 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
 .radar-ring-amber {
-  border: 1.5px solid rgba(245, 158, 11, 0.85);
-  background-color: rgba(245, 158, 11, 0.14);
-  animation: radar-pulse-green 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  border: 1.5px solid rgba(245, 158, 11, 0.9);
+  background-color: rgba(245, 158, 11, 0.18);
+  animation: radar-pulse-amber 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
 /* Navigation Rail Icon Buttons */

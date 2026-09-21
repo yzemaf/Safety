@@ -1,0 +1,35 @@
+{
+  "name": "safety-backend",
+  "version": "1.0.0",
+  "description": "Fastify Node.js Backend for Safety Platform",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "rimraf dist && tsc",
+    "start": "node dist/server.js",
+    "seed": "tsx src/seed.ts",
+    "clean": "tsx src/clean.ts"
+  },
+  "keywords": ["safety", "fastify", "mongodb", "firebase", "fcm", "agora", "geospatial"],
+  "author": "Safety Team",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "@fastify/jwt": "^8.0.1",
+    "@fastify/sensible": "^5.5.0",
+    "agora-token": "^2.0.3",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "firebase-admin": "^12.5.0",
+    "mongoose": "^8.6.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.14.9",
+    "rimraf": "^5.0.7",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.2"
+  }
+}

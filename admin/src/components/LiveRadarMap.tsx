@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { 
   Navigation, 
@@ -26,9 +27,14 @@ import { TbDeviceLandlinePhone } from 'react-icons/tb';
 import { CountryFlag } from './CountryFlag';
 import { 
   getAllCountries, 
+  getCountryByCode,
   getStatesForCountry, 
+  getStateByCode,
   getCommunitiesForState,
-  findJurisdictionForSession
+  registerDynamicCommunity,
+  prettifySlug,
+  findJurisdictionForSession,
+  type CommunityData
 } from '../services/jurisdictionData';
 import { 
   buildJurisdictionQuery, 
@@ -90,10 +96,12 @@ interface LiveRadarMapProps {
 export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
   googleMapsApiKey,
   onInitiateAgoraCall,
-  onResolveSession,
+  onResolveSession: _onResolveSession,
 }) => {
+  const navigate = useNavigate();
   const { 
     filteredSessions, 
+    reports,
     jurisdictionSettings, 
     updateJurisdictionSettings, 
     activePerimeter,
@@ -109,27 +117,34 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
   // Filter state for the dispatch queue
   const [queueFilter, setQueueFilter] = useState<'all' | 'emergency' | 'distress' | 'active'>('all');
   
-  // Currently inspected session
-  const [selectedSession, setSelectedSession] = useState<SafetySession | null>(
-    filteredSessions.find((s) => s.status === 'emergency') || filteredSessions[0] || null
-  );
+  // Currently inspected session ID
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  // Derive inspected session reactively so changes to status (e.g. emergency) update live
+  const selectedSession = useMemo(() => {
+    if (selectedSessionId) {
+      const match = filteredSessions.find((s) => s.id === selectedSessionId);
+      if (match) return match;
+    }
+    return filteredSessions.find((s) => s.status === 'emergency') || filteredSessions[0] || null;
+  }, [selectedSessionId, filteredSessions]);
+
+  const matchingReport = useMemo(() => {
+    if (!selectedSession || selectedSession.status !== 'emergency') return null;
+    return (
+      reports.find(
+        (r) =>
+          (r.reportedBy && (r.reportedBy === selectedSession.userId || r.reportedBy === selectedSession.id)) ||
+          (r.reporterName && selectedSession.userName && r.reporterName.toLowerCase() === selectedSession.userName.toLowerCase()) ||
+          (r.source === 'safety_mode_emergency' && selectedSession.userName && r.title.includes(selectedSession.userName))
+      ) || null
+    );
+  }, [selectedSession, reports]);
 
   const [isGoogleMapLoaded, setIsGoogleMapLoaded] = useState(false);
   const mapType = 'roadmap' as const;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const googleMapInstanceRef = useRef<any>(null);
-
-  // Synchronize inspected session when filtered list changes
-  useEffect(() => {
-    if (filteredSessions.length > 0) {
-      if (!selectedSession || !filteredSessions.some((s) => s.id === selectedSession.id)) {
-        setSelectedSession(filteredSessions.find((s) => s.status === 'emergency') || filteredSessions[0]);
-      }
-    } else {
-      setSelectedSession(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredSessions]);
 
   // Memoized derived values (filters by global header search)
   const displayedQueue = useMemo(() => filteredSessions.filter((s) => {
@@ -161,12 +176,220 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
       : [],
     [jurisdictionSettings.countryCode]
   );
-  const communities = useMemo(
-    () => (jurisdictionSettings.countryCode !== 'ALL' && jurisdictionSettings.stateCode !== 'ALL')
-      ? getCommunitiesForState(jurisdictionSettings.countryCode, jurisdictionSettings.stateCode)
-      : [],
-    [jurisdictionSettings.countryCode, jurisdictionSettings.stateCode]
-  );
+  const autocompleteServiceRef = useRef<any>(null);
+  const geocoderRef = useRef<any>(null);
+  const searchTimeoutRef = useRef<any>(null);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const [communitySearchQuery, setCommunitySearchQuery] = useState('');
+  const [dynamicCommunities, setDynamicCommunities] = useState<CommunityData[]>([]);
+  const [placeSearchResults, setPlaceSearchResults] = useState<Array<{ id: string; name: string; fullName: string; placeId: string }>>([]);
+
+  useEffect(() => {
+    if (jurisdictionSettings.countryCode !== 'ALL' && jurisdictionSettings.stateCode !== 'ALL') {
+      const cached = getCommunitiesForState(jurisdictionSettings.countryCode, jurisdictionSettings.stateCode);
+      setDynamicCommunities(cached);
+    } else {
+      setDynamicCommunities([]);
+    }
+  }, [jurisdictionSettings.countryCode, jurisdictionSettings.stateCode, jurisdictionSettings.communityId]);
+
+  const handleCommunitySearch = useCallback((text: string) => {
+    setCommunitySearchQuery(text);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (!text || text.trim().length < 2) {
+      setPlaceSearchResults([]);
+      setIsSearchingPlaces(false);
+      return;
+    }
+
+    const cleanInput = text.trim();
+    setIsSearchingPlaces(true);
+
+    searchTimeoutRef.current = setTimeout(() => {
+      const googleObj = (window as any).google;
+      if (!autocompleteServiceRef.current && googleObj?.maps?.places?.AutocompleteService) {
+        autocompleteServiceRef.current = new googleObj.maps.places.AutocompleteService();
+      }
+      if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
+        geocoderRef.current = new googleObj.maps.Geocoder();
+      }
+
+      const countryObj = getCountryByCode(jurisdictionSettings.countryCode);
+      const stateObj = getStateByCode(jurisdictionSettings.countryCode, jurisdictionSettings.stateCode);
+
+      if (autocompleteServiceRef.current) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const req: any = {
+          input: cleanInput,
+        };
+
+        if (jurisdictionSettings.countryCode && jurisdictionSettings.countryCode !== 'ALL') {
+          req.componentRestrictions = { country: jurisdictionSettings.countryCode.toLowerCase() };
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        autocompleteServiceRef.current.getPlacePredictions(req, (predictions: any[] | null, status: any) => {
+          setIsSearchingPlaces(false);
+          if (status === 'OK' && predictions && predictions.length > 0) {
+            const seen = new Set<string>();
+            const results: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
+            for (const p of predictions) {
+              const shortName = p.structured_formatting?.main_text || p.description.split(',')[0].trim();
+              const norm = shortName.toLowerCase().trim();
+              if (!seen.has(norm)) {
+                seen.add(norm);
+                results.push({
+                  id: `gplace-${p.place_id}`,
+                  name: shortName,
+                  fullName: p.description,
+                  placeId: p.place_id,
+                });
+              }
+            }
+            setPlaceSearchResults(results);
+          } else if (geocoderRef.current) {
+            // Fallback to Google Geocoder if autocomplete returned no direct matches
+            const geoQuery = stateObj ? `${cleanInput}, ${stateObj.name}, ${countryObj?.name || ''}` : cleanInput;
+            geocoderRef.current.geocode(
+              {
+                address: geoQuery,
+                componentRestrictions: jurisdictionSettings.countryCode !== 'ALL' ? { country: jurisdictionSettings.countryCode.toLowerCase() } : undefined,
+              },
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (results: any[], gStatus: any) => {
+                if (gStatus === 'OK' && results && results.length > 0) {
+                  const seen = new Set<string>();
+                  const fallbackList: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
+                  for (const r of results) {
+                    const shortName = r.address_components?.[0]?.long_name || r.formatted_address.split(',')[0].trim();
+                    const norm = shortName.toLowerCase().trim();
+                    if (!seen.has(norm)) {
+                      seen.add(norm);
+                      fallbackList.push({
+                        id: `gplace-${r.place_id}`,
+                        name: shortName,
+                        fullName: r.formatted_address,
+                        placeId: r.place_id,
+                      });
+                    }
+                  }
+                  setPlaceSearchResults(fallbackList);
+                } else {
+                  setPlaceSearchResults([]);
+                }
+              }
+            );
+          } else {
+            setPlaceSearchResults([]);
+          }
+        });
+      } else if (geocoderRef.current) {
+        const geoQuery = stateObj ? `${cleanInput}, ${stateObj.name}, ${countryObj?.name || ''}` : cleanInput;
+        geocoderRef.current.geocode(
+          {
+            address: geoQuery,
+            componentRestrictions: jurisdictionSettings.countryCode !== 'ALL' ? { country: jurisdictionSettings.countryCode.toLowerCase() } : undefined,
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (results: any[], gStatus: any) => {
+            setIsSearchingPlaces(false);
+            if (gStatus === 'OK' && results && results.length > 0) {
+              const seen = new Set<string>();
+              const fallbackList: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
+              for (const r of results) {
+                const shortName = r.address_components?.[0]?.long_name || r.formatted_address.split(',')[0].trim();
+                const norm = shortName.toLowerCase().trim();
+                if (!seen.has(norm)) {
+                  seen.add(norm);
+                  fallbackList.push({
+                    id: `gplace-${r.place_id}`,
+                    name: shortName,
+                    fullName: r.formatted_address,
+                    placeId: r.place_id,
+                  });
+                }
+              }
+              setPlaceSearchResults(fallbackList);
+            } else {
+              setPlaceSearchResults([]);
+            }
+          }
+        );
+      } else {
+        setIsSearchingPlaces(false);
+        setPlaceSearchResults([]);
+      }
+    }, 180);
+  }, [jurisdictionSettings.countryCode, jurisdictionSettings.stateCode]);
+
+  const handleCommunitySelect = useCallback((val: string) => {
+    const activeResults = [...placeSearchResults];
+    setCommunitySearchQuery('');
+    setPlaceSearchResults([]);
+
+    if (val === 'ALL') {
+      updateJurisdictionSettings({ communityId: 'ALL', communityName: 'All Communities' });
+      return;
+    }
+
+    const stateObj = getStateByCode(jurisdictionSettings.countryCode, jurisdictionSettings.stateCode);
+    const countryObj = getCountryByCode(jurisdictionSettings.countryCode);
+    const fallbackCenter = stateObj?.center || countryObj?.center || { lat: 0, lng: 0 };
+
+    if (val.startsWith('custom-')) {
+      const cleanName = communitySearchQuery.trim() || prettifySlug(val.replace('custom-', ''));
+      const reg = registerDynamicCommunity(
+        jurisdictionSettings.countryCode,
+        jurisdictionSettings.stateCode,
+        cleanName,
+        activePerimeter?.center || fallbackCenter
+      );
+      setDynamicCommunities((prev) => {
+        if (prev.some((c) => c.id === reg.id)) return prev;
+        return [...prev, reg].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      updateJurisdictionSettings({ communityId: reg.id, communityName: reg.name });
+      return;
+    }
+
+    const placeMatch = activeResults.find((p) => p.id === val);
+    const googleObj = (window as any).google;
+    if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
+      geocoderRef.current = new googleObj.maps.Geocoder();
+    }
+
+    if (placeMatch && placeMatch.placeId && geocoderRef.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      geocoderRef.current.geocode({ placeId: placeMatch.placeId }, (results: any[], status: any) => {
+        if (status === 'OK' && results && results.length > 0) {
+          const loc = results[0].geometry?.location;
+          if (loc) {
+            const pt = { lat: loc.lat(), lng: loc.lng() };
+            const reg = registerDynamicCommunity(
+              jurisdictionSettings.countryCode,
+              jurisdictionSettings.stateCode,
+              placeMatch.name,
+              pt
+            );
+            setDynamicCommunities((prev) => {
+              if (prev.some((c) => c.id === reg.id)) return prev;
+              return [...prev, reg].sort((a, b) => a.name.localeCompare(b.name));
+            });
+            updateJurisdictionSettings({ communityId: reg.id, communityName: reg.name });
+          }
+        }
+      });
+      return;
+    }
+
+    const found = dynamicCommunities.find((c) => c.id === val);
+    const commName = found?.name || prettifySlug(val);
+    updateJurisdictionSettings({ communityId: val, communityName: commName });
+  }, [placeSearchResults, communitySearchQuery, dynamicCommunities, jurisdictionSettings.countryCode, jurisdictionSettings.stateCode, updateJurisdictionSettings, activePerimeter]);
 
   const countryOptions = useMemo(() => [
     {
@@ -200,14 +423,107 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     })),
   ], [states]);
 
-  const communityOptions = useMemo(() => [
-    { value: 'ALL', searchValue: 'All Communities Cities Sectors', label: 'All Communities / Cities' },
-    ...communities.map((cm) => ({
-      value: cm.id,
-      searchValue: `${cm.name}`,
-      label: cm.name,
-    })),
-  ], [communities]);
+  const communityOptions = useMemo(() => {
+    const isTyping = communitySearchQuery.trim().length > 0;
+    const query = communitySearchQuery.trim().toLowerCase();
+
+    const opts: Array<{ value: string; searchValue: string; label: React.ReactNode }> = [];
+
+    // Show 'ALL' when not actively filtering
+    if (!isTyping) {
+      opts.push({ 
+        value: 'ALL', 
+        searchValue: 'All Communities Cities', 
+        label: 'All Communities / Cities' 
+      });
+    }
+
+    const seenNames = new Set<string>();
+
+    // 1. Registered dynamic communities (previously picked)
+    // Only show if not typing, OR if they match what the user is typing
+    for (const cm of dynamicCommunities) {
+      const norm = cm.name.toLowerCase().trim();
+      if (isTyping && !norm.includes(query)) {
+        continue;
+      }
+
+      if (!seenNames.has(norm)) {
+        seenNames.add(norm);
+        opts.push({
+          value: cm.id,
+          searchValue: cm.name,
+          label: (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <MapPin size={11} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <span style={{ fontWeight: 600 }}>{cm.name}</span>
+            </div>
+          ),
+        });
+      }
+    }
+
+    // 2. Live deduplicated Google Places search predictions (only shown when results exist)
+    for (const p of placeSearchResults) {
+      const norm = p.name.toLowerCase().trim();
+      if (!seenNames.has(norm)) {
+        seenNames.add(norm);
+        const subAddress = p.fullName.split(',').slice(1, 3).join(',').trim();
+        opts.push({
+          value: p.id,
+          searchValue: `${p.name} ${p.fullName}`,
+          label: (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: '260px', overflow: 'hidden' }}>
+              <MapPin size={11} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <span style={{ fontWeight: 600 }}>{p.name}</span>
+              {subAddress && (
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-sub)', opacity: 0.7, marginLeft: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  ({subAddress})
+                </span>
+              )}
+            </div>
+          ),
+        });
+      }
+    }
+
+    // Ensure the currently selected community is present in options so Antd can render its label properly
+    if (jurisdictionSettings.communityId && jurisdictionSettings.communityId !== 'ALL') {
+      const isAlreadyInOpts = opts.some((o) => o.value === jurisdictionSettings.communityId);
+      if (!isAlreadyInOpts) {
+        const found = dynamicCommunities.find((c) => c.id === jurisdictionSettings.communityId);
+        const displayName = found?.name || jurisdictionSettings.communityName || prettifySlug(jurisdictionSettings.communityId);
+        opts.unshift({
+          value: jurisdictionSettings.communityId,
+          searchValue: displayName,
+          label: (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <MapPin size={11} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <span style={{ fontWeight: 600 }}>{displayName}</span>
+            </div>
+          ),
+        });
+      }
+    }
+
+    if (isTyping && query.length >= 1) {
+      const hasMatch = opts.some((o) => o.searchValue.toLowerCase().includes(query));
+      if (!hasMatch) {
+        opts.push({
+          value: `custom-${query.replace(/[^a-z0-9]+/g, '-')}`,
+          searchValue: query,
+          label: (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <MapPin size={11} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <span style={{ fontWeight: 700 }}>Select "{communitySearchQuery.trim()}"</span>
+            </div>
+          ),
+        });
+      }
+    }
+
+    return opts;
+  }, [dynamicCommunities, placeSearchResults, communitySearchQuery, jurisdictionSettings.communityId]);
 
   // Trigger Google Maps resize recalculation whenever container dimensions change or panels toggle
   useEffect(() => {
@@ -268,6 +584,17 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { Map } = (await importLibrary('maps')) as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const placesLib = (await importLibrary('places')) as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const geocodingLib = (await importLibrary('geocoding')) as any;
+
+        if (placesLib?.AutocompleteService) {
+          autocompleteServiceRef.current = new placesLib.AutocompleteService();
+        }
+        if (geocodingLib?.Geocoder) {
+          geocoderRef.current = new geocodingLib.Geocoder();
+        }
 
         if (!isMounted || !mapContainerRef.current) return;
 
@@ -370,34 +697,26 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
   };
 
   const handleSelectSession = useCallback((sess: SafetySession) => {
-    setSelectedSession(sess);
+    setSelectedSessionId(sess.id);
 
-    // 1. Automatically re-open the Citizen Details inspector panel
+    // 1. Automatically open the Citizen Details inspector panel
     setIsInspectorCollapsed(false);
 
-    // 2. Auto-set the jurisdiction view to become focused on their community (if not already focused)
+    // 2. Automatically select citizen's state and community in jurisdiction settings
     const targetJur = findJurisdictionForSession(sess);
     if (targetJur) {
-      const isAlreadyFocused =
-        jurisdictionSettings.mode === 'community' &&
-        jurisdictionSettings.countryCode === targetJur.countryCode &&
-        jurisdictionSettings.stateCode === targetJur.stateCode &&
-        jurisdictionSettings.communityId === targetJur.communityId;
-
-      if (!isAlreadyFocused) {
-        updateJurisdictionSettings({
-          mode: 'community',
-          countryCode: targetJur.countryCode,
-          stateCode: targetJur.stateCode,
-          communityId: targetJur.communityId,
-        });
-      }
+      updateJurisdictionSettings({
+        mode: 'community',
+        countryCode: targetJur.countryCode,
+        stateCode: targetJur.stateCode,
+        communityId: targetJur.communityId,
+        communityName: targetJur.communityName,
+      });
     }
 
-    // 3. Smooth fly camera to citizen's GPS coordinates
-    smoothFlyTo({ lat: sess.currentLocation.lat, lng: sess.currentLocation.lng }, 15);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jurisdictionSettings, updateJurisdictionSettings]);
+    // 3. Smooth fly camera directly to citizen's live GPS coordinates with street-level zoom
+    smoothFlyTo({ lat: sess.currentLocation.lat, lng: sess.currentLocation.lng }, 15.5);
+  }, [updateJurisdictionSettings]);
 
   // SMOOTH CINEMATIC CAMERA FLIGHT ON JURISDICTION SWITCH
   useEffect(() => {
@@ -614,10 +933,42 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
         this.onSelect = onSelect;
         if (this.div) {
           const isEmergency = sess.status === 'emergency';
+          const isDistress = sess.status === 'distress_pending';
+          const ring = this.div.querySelector('.radar-ring') as HTMLElement | null;
+          if (ring) {
+            ring.className = isEmergency
+              ? 'radar-ring radar-ring-red'
+              : isDistress
+              ? 'radar-ring radar-ring-amber'
+              : 'radar-ring radar-ring-green';
+            ring.style.width = isEmergency ? '64px' : '48px';
+            ring.style.height = isEmergency ? '64px' : '48px';
+            ring.style.top = isEmergency ? '-32px' : '-24px';
+            ring.style.left = isEmergency ? '-32px' : '-24px';
+          }
           const chip = this.div.querySelector('.gmap-chip-tag') as HTMLElement | null;
           if (chip) {
             chip.style.borderColor = isSelected ? 'var(--primary)' : isEmergency ? 'var(--alert-red)' : 'var(--border-hairline)';
             chip.style.boxShadow = isSelected ? '0 6px 22px rgba(16, 185, 129, 0.25)' : '0 4px 18px rgba(15, 23, 42, 0.12)';
+
+            const initials = sess.userName
+              ? sess.userName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+              : 'U';
+
+            chip.innerHTML = `
+              <div class="profile-avatar ${isEmergency ? 'profile-avatar-emergency' : isDistress ? 'profile-avatar-distress' : ''}">
+                ${initials}
+                ${isEmergency ? '<span style="position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background-color: #EF4444; border: 1.5px solid #FFFFFF;"></span>' : ''}
+              </div>
+              <div style="display: flex; flex-direction: column;">
+                <div style="font-size: 11px; font-weight: 700; color: ${isEmergency ? '#DC2626' : '#0F172A'}; line-height: 1.15;">
+                  ${sess.userName} ${isEmergency ? '• SOS' : ''}
+                </div>
+                <div style="font-size: 9.5px; font-weight: 400; color: #64748B; margin-top: 1px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  ${sess.addressName || `${sess.currentLocation.lat.toFixed(3)}, ${sess.currentLocation.lng.toFixed(3)}`}
+                </div>
+              </div>
+            `;
           }
           this.draw();
         }
@@ -938,7 +1289,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                         <span className={`badge ${
                           isEmergency ? 'badge-emergency' : isDistress ? 'badge-distress' : 'badge-active'
                         }`} style={{ fontSize: '0.55rem', padding: '0.08rem 0.4rem', fontWeight: 700 }}>
-                          {isEmergency ? 'Emergency' : isDistress ? 'Warning' : 'Active'}
+                          {isEmergency ? 'Emergency' : isDistress ? 'Needs Attention' : 'Active'}
                         </span>
                       </div>
                     </div>
@@ -954,7 +1305,9 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                         </div>
                         <div style={{ overflow: 'hidden', paddingRight: '0.25rem' }}>
                           <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {sess.addressName?.split(',')[0] || 'Start Location'}
+                            {sess.addressName && !sess.addressName.toLowerCase().startsWith('my location')
+                              ? sess.addressName.split(',')[0]
+                              : `${currentPoint.lat.toFixed(4)}, ${currentPoint.lng.toFixed(4)}`}
                           </div>
                         </div>
                         <div style={{ fontSize: '0.56rem', color: 'var(--text-muted)', fontWeight: 400, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -964,12 +1317,31 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
                       {/* Current Live GPS Node */}
                       <div className="route-node">
-                        <div className="route-node-icon-end" style={{ left: '-1.2rem', width: '13px', height: '13px' }}>
-                          <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: isEmergency ? 'var(--alert-red)' : isDistress ? 'var(--alert-amber)' : 'var(--primary)' }} />
+                        <div
+                          className="route-node-icon-end"
+                          style={{
+                            left: '-1.2rem',
+                            width: '13px',
+                            height: '13px',
+                            borderColor: isEmergency ? 'var(--alert-red)' : isDistress ? 'var(--alert-amber)' : 'var(--primary)',
+                            backgroundColor: isEmergency ? 'rgba(239, 68, 68, 0.15)' : isDistress ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: '4px',
+                              height: '4px',
+                              borderRadius: '50%',
+                              backgroundColor: isEmergency ? 'var(--alert-red)' : isDistress ? 'var(--alert-amber)' : 'var(--primary)',
+                              boxShadow: isEmergency ? '0 0 5px rgba(239, 68, 68, 0.7)' : isDistress ? '0 0 5px rgba(245, 158, 11, 0.7)' : 'none',
+                            }}
+                          />
                         </div>
                         <div style={{ overflow: 'hidden', paddingRight: '0.25rem' }}>
                           <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {sess.addressName || `${currentPoint.lat.toFixed(4)}, ${currentPoint.lng.toFixed(4)}`}
+                            {sess.addressName && !sess.addressName.toLowerCase().startsWith('my location')
+                              ? sess.addressName
+                              : `${currentPoint.lat.toFixed(4)}, ${currentPoint.lng.toFixed(4)}`}
                           </div>
                         </div>
                       </div>
@@ -984,15 +1356,18 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                       justifyContent: 'space-between',
                       alignItems: 'center',
                     }}>
-                      <div style={{ fontSize: '0.64rem', color: 'var(--text-sub)', fontWeight: 500 }}>
-                        {sess.userPhone}
+                      <div style={{ fontSize: '0.64rem', color: sess.userPhone ? 'var(--text-sub)' : 'var(--text-muted)', fontWeight: 500 }}>
+                        {sess.userPhone || 'No contact set'}
                       </div>
 
                       {/* Direct Quick Action Buttons (Telephone Dial & In-App Call) */}
                       <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
                         <a
-                          href={`tel:${sess.userPhone}`}
-                          onClick={(e) => e.stopPropagation()}
+                          href={sess.userPhone ? `tel:${sess.userPhone}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!sess.userPhone) e.preventDefault();
+                          }}
                           style={{
                             width: '24px',
                             height: '24px',
@@ -1002,10 +1377,12 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: 'var(--text-main)',
+                            color: sess.userPhone ? 'var(--text-main)' : 'var(--text-muted)',
                             textDecoration: 'none',
+                            opacity: sess.userPhone ? 1 : 0.45,
+                            cursor: sess.userPhone ? 'pointer' : 'default',
                           }}
-                          title={`Dial ${sess.userPhone}`}
+                          title={sess.userPhone ? `Dial ${sess.userPhone}` : 'No emergency phone configured'}
                         >
                           <TbDeviceLandlinePhone size={14} strokeWidth={2} />
                         </a>
@@ -1197,23 +1574,34 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
                 <span style={{ color: 'var(--border-hairline)' }}>|</span>
 
-                {/* 3. Community / Sector Selector (Antd Searchable Single-Select) */}
+                {/* 3. Community / Sector Selector (Pure Google Maps Places live type-ahead) */}
                 <Select
                   showSearch
                   size="small"
                   variant="borderless"
-                  filterOption={(input, option) =>
-                    ((option as any)?.searchValue || '').toLowerCase().includes(input.toLowerCase())
+                  filterOption={false}
+                  onSearch={handleCommunitySearch}
+                  onDropdownVisibleChange={(open) => {
+                    if (!open) {
+                      setCommunitySearchQuery('');
+                      setPlaceSearchResults([]);
+                      setIsSearchingPlaces(false);
+                    }
+                  }}
+                  notFoundContent={
+                    isSearchingPlaces
+                      ? 'Searching Google Places...'
+                      : communitySearchQuery.trim().length >= 1
+                      ? 'No matching communities found'
+                      : 'Type city or community name...'
                   }
-                  disabled={jurisdictionSettings.countryCode === 'ALL' || jurisdictionSettings.stateCode === 'ALL'}
+                  disabled={jurisdictionSettings.countryCode === 'ALL'}
                   value={jurisdictionSettings.communityId}
-                  onChange={(val) => updateJurisdictionSettings({
-                    communityId: val,
-                  })}
+                  onChange={handleCommunitySelect}
                   options={communityOptions}
-                  style={{ width: 175, fontWeight: 700, fontSize: '0.75rem' }}
-                  popupMatchSelectWidth={260}
-                  placeholder="All Communities"
+                  style={{ width: 220, fontWeight: 700, fontSize: '0.75rem' }}
+                  popupMatchSelectWidth={290}
+                  placeholder="Search community (e.g. Egbeda)..."
                 />
               </div>
             )}
@@ -1593,10 +1981,14 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
             {/* Contact Details */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.66rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-sub)' }}>
-                <span>Phone</span>
-                <a href={`tel:${selectedSession.userPhone}`} style={{ color: 'var(--accent-green-dark)', fontWeight: 600, textDecoration: 'none' }}>
-                  {selectedSession.userPhone}
-                </a>
+                <span>Emergency Contact</span>
+                {selectedSession.userPhone ? (
+                  <a href={`tel:${selectedSession.userPhone}`} style={{ color: 'var(--accent-green-dark)', fontWeight: 600, textDecoration: 'none' }}>
+                    {selectedSession.userPhone}
+                  </a>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Not configured</span>
+                )}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-sub)' }}>
                 <span>Email</span>
@@ -1616,12 +2008,27 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
               </button>
 
               <a
-                href={`tel:${selectedSession.userPhone}`}
+                href={selectedSession.userPhone ? `tel:${selectedSession.userPhone}` : undefined}
                 className="btn btn-outline"
-                style={{ width: '100%', justifyContent: 'center', padding: '0.4rem 0.75rem', fontSize: '0.68rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem', textDecoration: 'none', color: 'var(--text-main)' }}
+                style={{
+                  width: '100%',
+                  justifyContent: 'center',
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.68rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  textDecoration: 'none',
+                  color: selectedSession.userPhone ? 'var(--text-main)' : 'var(--text-muted)',
+                  pointerEvents: selectedSession.userPhone ? 'auto' : 'none',
+                  opacity: selectedSession.userPhone ? 1 : 0.45,
+                  cursor: selectedSession.userPhone ? 'pointer' : 'default',
+                }}
+                title={selectedSession.userPhone ? `Dial ${selectedSession.userPhone}` : 'No emergency contact configured'}
               >
                 <TbDeviceLandlinePhone size={15} strokeWidth={2} />
-                <span>Dial Number</span>
+                <span>Dial Contact</span>
               </a>
 
               <button
@@ -1646,11 +2053,27 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
               {selectedSession.status === 'emergency' && (
                 <button
-                  onClick={() => onResolveSession(selectedSession.id)}
+                  onClick={() => {
+                    if (matchingReport) {
+                      navigate(`/admin/incidents/${matchingReport.id}`);
+                    } else {
+                      navigate('/admin/incidents');
+                    }
+                  }}
                   className="btn btn-outline-green"
-                  style={{ width: '100%', justifyContent: 'center', padding: '0.38rem 0.75rem', fontSize: '0.68rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    padding: '0.45rem 0.75rem',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    cursor: 'pointer',
+                  }}
                 >
-                  <CheckCircle size={12} strokeWidth={2.2} />
+                  <CheckCircle size={14} strokeWidth={2.2} />
                   <span>Resolve Emergency</span>
                 </button>
               )}

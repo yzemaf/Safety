@@ -30,9 +30,9 @@ const boundaryCache = new Map<string, GeoJsonFeatureCollection>();
 export function sanitizePlaceName(name: string): string {
   if (!name) return '';
   return name
-    .replace(/\s*\([^)]*\)/g, '') // Remove everything in parentheses (e.g. 'Aba North (Eziama)' -> 'Aba North')
-    .replace(/\s*\/\s*.*/g, '') // Remove everything after slash (e.g. 'Yaba / Lagos Mainland' -> 'Yaba')
-    .replace(/\s*&.*/g, '') // Remove everything after ampersand (e.g. 'Victoria Island & Oniru' -> 'Victoria Island')
+    .replace(/\s*\([^)]*\)/g, '') // Remove everything in parentheses (e.g. 'Camden (North)' -> 'Camden')
+    .replace(/\s*\/\s*.*/g, '') // Remove everything after slash (e.g. 'Westminster / London' -> 'Westminster')
+    .replace(/\s*&.*/g, '') // Remove everything after ampersand (e.g. 'Midtown & Chelsea' -> 'Midtown')
     .replace(/\b(Capital Sector|Commercial Core|Commercial Zone|Historic District|Financial District|Presidential District|Sports & Culture Hub|Express Corridor|Central Business|Midtown & Times Square|DUMBO & Heights|Central|Old GRA|Sector Landmark|Metro Zone|Area Council|LGA|Diplomatic Sector|Waterfront Hub|Satellite District|Airport Corridor|Port Corridor|Energy Hub|Industrial Zone|Industrial Sector|Marina Sector|Island Sector|Forest Sector|Military Zone|City Center|Capital Core|University Sector|Raffia City|Oil & Gas Sector|Sub-County|Sub County|Borough|Arrondissement)\b/gi, '')
     .trim();
 }
@@ -114,31 +114,41 @@ export function generatePerimeterPolygon(
 }
 
 /**
- * Converts a Nominatim bounding box [minLat, maxLat, minLng, maxLng] into a polygon ring
+ * Converts a Nominatim bounding box [minLat, maxLat, minLng, maxLng] into a smooth, organic boundary contour polygon
+ * (eliminates blocky squares, sharp chamfers, and rectangular artifacts)
  */
-export function boundingBoxToPolygon(
-  bbox: [string, string, string, string] | [number, number, number, number]
+export function smoothBoundingPolygon(
+  bbox: [string, string, string, string] | [number, number, number, number],
+  points: number = 36
 ): { lat: number; lng: number }[] {
   const minLat = parseFloat(String(bbox[0]));
   const maxLat = parseFloat(String(bbox[1]));
   const minLng = parseFloat(String(bbox[2]));
   const maxLng = parseFloat(String(bbox[3]));
 
-  const dLat = (maxLat - minLat) * 0.15;
-  const dLng = (maxLng - minLng) * 0.15;
+  const centerLat = (minLat + maxLat) / 2;
+  const centerLng = (minLng + maxLng) / 2;
+  const rLatKm = Math.max(1.2, haversineDistanceKm(centerLat, centerLng, maxLat, centerLng));
+  const rLngKm = Math.max(1.2, haversineDistanceKm(centerLat, centerLng, centerLat, maxLng));
 
-  return [
-    { lat: minLat + dLat, lng: minLng },
-    { lat: maxLat - dLat, lng: minLng },
-    { lat: maxLat, lng: minLng + dLng },
-    { lat: maxLat, lng: maxLng - dLng },
-    { lat: maxLat - dLat, lng: maxLng },
-    { lat: minLat + dLat, lng: maxLng },
-    { lat: minLat, lng: maxLng - dLng },
-    { lat: minLat, lng: minLng + dLng },
-    { lat: minLat + dLat, lng: minLng },
-  ];
+  const coords: { lat: number; lng: number }[] = [];
+  for (let i = 0; i <= points; i++) {
+    const angle = (i * 2 * Math.PI) / points;
+    // Organic geometric modulation creates realistic topographic curves instead of artificial boxes
+    const rMod = 1 + 0.08 * Math.sin(3 * angle) + 0.05 * Math.cos(5 * angle);
+    const dLatKm = rLatKm * rMod * Math.sin(angle);
+    const dLngKm = rLngKm * rMod * Math.cos(angle);
+    const pLat = centerLat + (dLatKm / 110.574);
+    const pLng = centerLng + (dLngKm / (111.320 * Math.cos((centerLat * Math.PI) / 180)));
+    coords.push({ lat: pLat, lng: pLng });
+  }
+  return coords;
 }
+
+/**
+ * Backwards-compatible alias for smooth bounding polygon
+ */
+export const boundingBoxToPolygon = smoothBoundingPolygon;
 
 /**
  * Calculates great-circle distance in kilometers between two GPS coordinates
@@ -197,15 +207,15 @@ export async function fetchRealBoundaryGeoJson(
     return boundaryCache.get(cacheKey)!;
   }
 
-  // Geographic constraints based on jurisdiction level
-  const maxDistanceKm = level === 'country' ? 500 : level === 'state' ? 100 : 15;
-  const minSpanDegrees = level === 'country' ? 0.80 : level === 'state' ? 0.15 : 0.012; // ~1.3km minimum for community
-  const maxSpanDegrees = level === 'country' ? 80.0 : level === 'state' ? 15.0 : 0.40;
+  // Geographic constraints based on jurisdiction level (strictly prevent jumping to distant places with similar names)
+  const maxDistanceKm = level === 'country' ? 800 : level === 'state' ? 180 : 3.8;
+  const minSpanDegrees = level === 'country' ? 0.80 : level === 'state' ? 0.15 : 0.008; // ~900m minimum for community
+  const maxSpanDegrees = level === 'country' ? 80.0 : level === 'state' ? 15.0 : 0.15;
 
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
       query
-    )}&format=jsonv2&polygon_geojson=1&polygon_threshold=0.002&limit=6`;
+    )}&format=jsonv2&polygon_geojson=1&polygon_threshold=0.002&limit=8`;
 
     const res = await fetch(url, {
       headers: {
@@ -217,27 +227,25 @@ export async function fetchRealBoundaryGeoJson(
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
+        // PASS 1: Prioritize genuine official GeoJSON Polygon or MultiPolygon across all returned results
         for (const item of data) {
-          // Reject micro-amenities, single buildings, bus stops, ferry terminals, shops, etc.
           if (DISALLOWED_OSM_CATEGORIES.has(item.category)) continue;
 
           const itemLat = parseFloat(item.lat);
           const itemLng = parseFloat(item.lon);
 
-          // Verify proximity: result must be near the expected center coordinates
+          // Verify proximity: result must be within reasonable distance of expected center
           if (fallbackCenter && fallbackCenter.lat && fallbackCenter.lng && !isNaN(itemLat) && !isNaN(itemLng)) {
             const dist = haversineDistanceKm(fallbackCenter.lat, fallbackCenter.lng, itemLat, itemLng);
             if (dist > maxDistanceKm) continue;
           }
 
-          // 1. Check if item has a valid official polygon or multipolygon
           if (item.geojson && (item.geojson.type === 'Polygon' || item.geojson.type === 'MultiPolygon')) {
             if (item.boundingbox && item.boundingbox.length === 4) {
               const span = Math.max(
                 Math.abs(parseFloat(item.boundingbox[1]) - parseFloat(item.boundingbox[0])),
                 Math.abs(parseFloat(item.boundingbox[3]) - parseFloat(item.boundingbox[2]))
               );
-              // Reject micro-polygons (e.g. single building footprints < 1km)
               if (span < minSpanDegrees) continue;
             }
 
@@ -259,15 +267,27 @@ export async function fetchRealBoundaryGeoJson(
             boundaryCache.set(cacheKey, featureCollection);
             return featureCollection;
           }
+        }
 
-          // 2. Check if item has an appropriately-sized bounding box
+        // PASS 2: If no Polygon was available, construct smooth natural organic perimeter from bounding box
+        for (const item of data) {
+          if (DISALLOWED_OSM_CATEGORIES.has(item.category)) continue;
+
+          const itemLat = parseFloat(item.lat);
+          const itemLng = parseFloat(item.lon);
+
+          if (fallbackCenter && fallbackCenter.lat && fallbackCenter.lng && !isNaN(itemLat) && !isNaN(itemLng)) {
+            const dist = haversineDistanceKm(fallbackCenter.lat, fallbackCenter.lng, itemLat, itemLng);
+            if (dist > maxDistanceKm) continue;
+          }
+
           if (item.boundingbox && item.boundingbox.length === 4) {
             const span = Math.max(
               Math.abs(parseFloat(item.boundingbox[1]) - parseFloat(item.boundingbox[0])),
               Math.abs(parseFloat(item.boundingbox[3]) - parseFloat(item.boundingbox[2]))
             );
             if (span >= minSpanDegrees && span <= maxSpanDegrees) {
-              const polyCoords = boundingBoxToPolygon(item.boundingbox);
+              const polyCoords = smoothBoundingPolygon(item.boundingbox, 36);
               const featureCollection: GeoJsonFeatureCollection = {
                 type: 'FeatureCollection',
                 features: [
@@ -298,7 +318,7 @@ export async function fetchRealBoundaryGeoJson(
   // 3. Fallback: synthesize high-fidelity perimeter polygon if fallbackCenter provided
   if (fallbackCenter && fallbackCenter.lat && fallbackCenter.lng) {
     const radius = level === 'country' ? 220 : level === 'state' ? 45 : 3.8;
-    const polyCoords = generatePerimeterPolygon(fallbackCenter, radius, 28);
+    const polyCoords = generatePerimeterPolygon(fallbackCenter, radius, 32);
     const featureCollection: GeoJsonFeatureCollection = {
       type: 'FeatureCollection',
       features: [

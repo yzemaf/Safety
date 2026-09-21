@@ -28,7 +28,7 @@ export const StaffPage: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newPassword, setNewPassword] = useState('safety2026');
-  const [newCountryCode, setNewCountryCode] = useState('NG');
+  const [newCountryCode, setNewCountryCode] = useState('ALL');
 
   // Get full worldwide countries list
   const worldwideCountries = useMemo(() => getAllCountries(), []);

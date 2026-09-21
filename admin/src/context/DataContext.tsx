@@ -8,25 +8,24 @@ import type {
   StaffMember,
   StaffStatus
 } from '../types';
-import { INITIAL_SESSIONS, INITIAL_REPORTS, INITIAL_STAFF } from '../services/mockData';
 import { loadSystemConfig } from '../services/configService';
+import { apiService } from '../services/apiService';
 import { 
   initFirebase, 
   subscribeToActiveSessions, 
-  subscribeToIncidentReports 
+  subscribeToIncidentReports,
+  updateIncidentInFirestore,
+  addCommentInFirestore
 } from '../services/firebaseService';
-import { resolveActivePerimeter, getStateByCode, type ResolvedPerimeter } from '../services/jurisdictionData';
+import { 
+  resolveActivePerimeter, 
+  getStateByCode, 
+  DEFAULT_JURISDICTION_SETTINGS,
+  type ResolvedPerimeter 
+} from '../services/jurisdictionData';
 import { useAuth } from './AuthContext';
 
-const JURISDICTION_STORAGE_PREFIX = 'safety_admin_jurisdiction_';
 const STAFF_STORAGE_KEY = 'safety_staff_members_registry';
-
-export const DEFAULT_JURISDICTION_SETTINGS: AdminJurisdictionSettings = {
-  mode: 'global',
-  countryCode: 'ALL',
-  stateCode: 'ALL',
-  communityId: 'ALL',
-};
 
 interface DataContextType {
   config: SystemConfig;
@@ -36,11 +35,13 @@ interface DataContextType {
   filteredReports: IncidentReport[];
   callingSession: SafetySession | null;
   setCallingSession: (session: SafetySession | null) => void;
-  addComment: (reportId: string, text: string) => void;
-  updateReportStatus: (reportId: string, status: IncidentStatus) => void;
+  addComment: (reportId: string, text: string) => Promise<boolean>;
+  updateReportStatus: (reportId: string, status: IncidentStatus) => Promise<boolean>;
   resolveSession: (sessionId: string) => void;
+  refreshData: () => Promise<void>;
   emergencyCount: number;
   globalEmergencyCount: number;
+  purgeAllData: () => Promise<{ success: boolean; message?: string; deleted?: any; error?: string }>;
   
   // Staff & Team Management
   staffMembers: StaffMember[];
@@ -62,16 +63,14 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { adminUser } = useAuth();
+  const { adminUser, isAuthenticated } = useAuth();
   const [config] = useState<SystemConfig>(loadSystemConfig);
-  const [sessions, setSessions] = useState<SafetySession[]>(INITIAL_SESSIONS);
-  const [reports, setReports] = useState<IncidentReport[]>(INITIAL_REPORTS);
+  const [sessions, setSessions] = useState<SafetySession[]>([]);
+  const [reports, setReports] = useState<IncidentReport[]>([]);
   const [callingSession, setCallingSession] = useState<SafetySession | null>(null);
 
-  // Storage key specific to current admin user (persists per admin)
-  const storageKey = adminUser?.email 
-    ? `${JURISDICTION_STORAGE_PREFIX}${adminUser.email}` 
-    : `${JURISDICTION_STORAGE_PREFIX}default`;
+  // Unified, stable storage key to guarantee persistence across reloads
+  const storageKey = 'safety_admin_jurisdiction_active';
 
   // Persistent Jurisdiction Settings
   const [jurisdictionSettings, setJurisdictionSettings] = useState<AdminJurisdictionSettings>(() => {
@@ -122,6 +121,115 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return resolveActivePerimeter(jurisdictionSettings);
   }, [jurisdictionSettings]);
 
+  // ─── FASTIFY BACKEND DATA SYNC ──────────────────────────────────────────
+  const syncFromBackend = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const [backendIncidents, backendSessions, backendStaff] = await Promise.all([
+        apiService.fetchIncidents(),
+        apiService.fetchActiveSessions(),
+        apiService.fetchStaff(),
+      ]);
+
+      if (Array.isArray(backendIncidents)) {
+        setReports(
+          backendIncidents.sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+        );
+      }
+      if (Array.isArray(backendSessions)) {
+        setSessions(backendSessions);
+      }
+      if (Array.isArray(backendStaff)) {
+        persistStaff(backendStaff);
+      }
+    } catch (err) {
+      console.warn('[Admin] Sync from backend error:', err);
+    }
+  }, [isAuthenticated]);
+
+  // Initial load only on login/mount
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setReports([]);
+      setSessions([]);
+      return;
+    }
+    syncFromBackend();
+  }, [syncFromBackend, isAuthenticated]);
+
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function isPointInPolygon(
+  point: { lat: number; lng: number },
+  vs: Array<{ lat: number; lng: number }>
+): boolean {
+  if (!vs || vs.length < 3) return false;
+  const x = point.lat, y = point.lng;
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i].lat, yi = vs[i].lng;
+    const xj = vs[j].lat, yj = vs[j].lng;
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function checkCommunityScopeMatch(
+  itemCommunityId: string | undefined,
+  itemLocation: { lat: number; lng: number },
+  targetCommunityId: string,
+  perimeter: ResolvedPerimeter | null
+): boolean {
+  if (!targetCommunityId || targetCommunityId === 'ALL') return true;
+
+  const rawTarget = targetCommunityId.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const rawItem = (itemCommunityId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // 1. Direct ID / Slug string match
+  if (rawItem.length > 0 && rawTarget.length > 0) {
+    if (rawItem === rawTarget || rawItem.includes(rawTarget) || rawTarget.includes(rawItem)) {
+      return true;
+    }
+  }
+
+  // 2. Spatial perimeter match
+  if (perimeter && perimeter.level === 'community') {
+    // If perimeter polygon is defined with >= 3 vertices, check polygon containment
+    if (perimeter.boundary && perimeter.boundary.length >= 3) {
+      if (isPointInPolygon(itemLocation, perimeter.boundary)) {
+        return true;
+      }
+    }
+    // Proximity to community center (max 4.5km radius for neighbourhood scope)
+    const distKm = getDistanceKm(
+      itemLocation.lat,
+      itemLocation.lng,
+      perimeter.center.lat,
+      perimeter.center.lng
+    );
+    if (distKm <= 4.5) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
   // Filtered Sessions matching active jurisdiction
   const filteredSessions = useMemo(() => {
     if (jurisdictionSettings.mode === 'global' || jurisdictionSettings.countryCode === 'ALL') {
@@ -129,7 +237,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const cTarget = jurisdictionSettings.countryCode.toUpperCase();
     const sTarget = jurisdictionSettings.stateCode.toUpperCase();
-    const commTarget = jurisdictionSettings.communityId.toLowerCase();
 
     return sessions.filter((s) => {
       if (s.countryCode && s.countryCode.toUpperCase() !== cTarget) return false;
@@ -140,18 +247,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!matchesState) return false;
       }
       if (jurisdictionSettings.communityId !== 'ALL') {
-        const rawS = (s.communityId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const rawTarget = commTarget.replace(/[^a-z0-9]/g, '');
-        const matches = rawS === rawTarget || rawS.includes(rawTarget) || rawTarget.includes(rawS);
-        if (!matches) {
-          if (activePerimeter && activePerimeter.level === 'community') {
-            const dLat = s.currentLocation.lat - activePerimeter.center.lat;
-            const dLng = s.currentLocation.lng - activePerimeter.center.lng;
-            if (dLat * dLat + dLng * dLng > 0.04) return false;
-          } else {
-            return false;
-          }
-        }
+        return checkCommunityScopeMatch(
+          s.communityId,
+          s.currentLocation,
+          jurisdictionSettings.communityId,
+          activePerimeter
+        );
       }
       return true;
     });
@@ -164,7 +265,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const cTarget = jurisdictionSettings.countryCode.toUpperCase();
     const sTarget = jurisdictionSettings.stateCode.toUpperCase();
-    const commTarget = jurisdictionSettings.communityId.toLowerCase();
 
     return reports.filter((r) => {
       if (r.countryCode && r.countryCode.toUpperCase() !== cTarget) return false;
@@ -175,35 +275,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!matchesState) return false;
       }
       if (jurisdictionSettings.communityId !== 'ALL') {
-        const rawR = (r.communityId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const rawTarget = commTarget.replace(/[^a-z0-9]/g, '');
-        const matches = rawR === rawTarget || rawR.includes(rawTarget) || rawTarget.includes(rawR);
-        if (!matches) {
-          if (activePerimeter && activePerimeter.level === 'community') {
-            const dLat = r.location.lat - activePerimeter.center.lat;
-            const dLng = r.location.lng - activePerimeter.center.lng;
-            if (dLat * dLat + dLng * dLng > 0.04) return false;
-          } else {
-            return false;
-          }
-        }
+        return checkCommunityScopeMatch(
+          r.communityId,
+          r.location,
+          jurisdictionSettings.communityId,
+          activePerimeter
+        );
       }
       return true;
     });
   }, [reports, jurisdictionSettings, activePerimeter]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     if (config.firebaseConfigJson) {
       const isInit = initFirebase(config.firebaseConfigJson);
       if (isInit) {
         const unsubSessions = subscribeToActiveSessions((remoteSessions) => {
-          if (remoteSessions && remoteSessions.length > 0) {
+          if (Array.isArray(remoteSessions)) {
             setSessions(remoteSessions);
           }
         });
         const unsubReports = subscribeToIncidentReports((remoteReports) => {
-          if (remoteReports && remoteReports.length > 0) {
-            setReports(remoteReports);
+          if (Array.isArray(remoteReports)) {
+            setReports(
+              remoteReports.sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              )
+            );
           }
         });
         return () => {
@@ -212,54 +311,147 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
     }
-  }, [config.firebaseConfigJson]);
+  }, [config.firebaseConfigJson, isAuthenticated]);
 
-  const addComment = useCallback((reportId: string, text: string) => {
+  const addComment = useCallback(async (reportId: string, text: string): Promise<boolean> => {
+    const staffName = adminUser?.name || 'Admin Dispatcher';
+    const staffRole = 'Control Room Officer';
+    
+    const newComment = {
+      id: `comm-${Date.now()}`,
+      staffName,
+      staffRole,
+      comment: text,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Optimistic UI update
     setReports((prev) =>
       prev.map((rep) => {
         if (rep.id === reportId) {
-          const newComment = {
-            id: `comm-${Date.now()}`,
-            staffName: adminUser?.name || 'Admin Dispatcher',
-            staffRole: 'Control Room Officer',
-            comment: text,
-            createdAt: new Date().toISOString(),
-          };
           return {
             ...rep,
-            staffComments: [...rep.staffComments, newComment],
+            staffComments: [...(rep.staffComments || []), newComment],
             updatedAt: new Date().toISOString(),
           };
         }
         return rep;
       })
     );
+
+    try {
+      // Parallel sync to both Firestore (realtime) and Backend API (MongoDB)
+      const [fsResult, apiResult] = await Promise.allSettled([
+        addCommentInFirestore(reportId, newComment),
+        apiService.addComment(reportId, text, staffName, staffRole),
+      ]);
+
+      const fsSuccess = fsResult.status === 'fulfilled';
+      const apiSuccess = apiResult.status === 'fulfilled' && apiResult.value === true;
+
+      if (!fsSuccess && !apiSuccess) {
+        // Rollback optimistic state if both networks failed
+        setReports((prev) =>
+          prev.map((rep) => {
+            if (rep.id === reportId) {
+              return {
+                ...rep,
+                staffComments: (rep.staffComments || []).filter((c) => c.id !== newComment.id),
+              };
+            }
+            return rep;
+          })
+        );
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Failed to sync comment:', err);
+      return false;
+    }
   }, [adminUser?.name]);
 
-  const updateReportStatus = useCallback((reportId: string, newStatus: IncidentStatus) => {
+  const updateReportStatus = useCallback(async (reportId: string, newStatus: IncidentStatus): Promise<boolean> => {
+    let prevStatus: IncidentStatus = 'open';
     setReports((prev) =>
-      prev.map((rep) =>
-        rep.id === reportId ? { ...rep, status: newStatus, updatedAt: new Date().toISOString() } : rep
-      )
+      prev.map((rep) => {
+        if (rep.id === reportId) {
+          prevStatus = rep.status;
+          return { ...rep, status: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return rep;
+      })
     );
+
+    try {
+      // Parallel sync to both Firestore (realtime) and Backend API (MongoDB)
+      const [fsResult, apiResult] = await Promise.allSettled([
+        updateIncidentInFirestore(reportId, { status: newStatus }),
+        apiService.updateReportStatus(reportId, newStatus),
+      ]);
+
+      const fsSuccess = fsResult.status === 'fulfilled';
+      const apiSuccess = apiResult.status === 'fulfilled' && apiResult.value === true;
+
+      if (!fsSuccess && !apiSuccess) {
+        // Rollback optimistic state if both networks failed
+        setReports((prev) =>
+          prev.map((rep) => (rep.id === reportId ? { ...rep, status: prevStatus } : rep))
+        );
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Failed to sync status update:', err);
+      return false;
+    }
   }, []);
 
   const resolveSession = useCallback((sessionId: string) => {
     setSessions((prev) =>
       prev.map((s) => (s.id === sessionId ? { ...s, status: 'resolved' as const } : s))
     );
+    apiService.resolveSession(sessionId).catch((err) => {
+      console.warn('Backend session resolve error:', err);
+    });
+  }, []);
+
+  const purgeAllData = useCallback(async () => {
+    const res = await apiService.purgeAllTestData();
+    if (res.success) {
+      setReports([]);
+      setSessions([]);
+    }
+    return res;
   }, []);
 
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>(() => {
     try {
       const stored = localStorage.getItem(STAFF_STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const dummyIds = new Set(['stf-001', 'stf-002', 'stf-003', 'stf-004', 'stf-005', 'stf-006']);
+          const clean = parsed.filter(
+            (s: StaffMember) =>
+              !dummyIds.has(s.id) &&
+              s.name !== 'Sarah Jenkins' &&
+              s.name !== 'Officer David Miller' &&
+              s.name !== 'Inspector James Ochieng' &&
+              s.name !== 'Sergeant Marcus Holloway' &&
+              s.name !== 'Elena Rostova' &&
+              s.name !== 'Officer Lucas Weber' &&
+              s.name !== 'Control Room Dispatcher 1' &&
+              s.name !== 'Nairobi Regional Lead' &&
+              s.name !== 'London Support Lead'
+          );
+          return clean;
+        }
       }
     } catch {
       // ignore parse errors
     }
-    return INITIAL_STAFF;
+    return [];
   });
 
   const persistStaff = (newList: StaffMember[]) => {
@@ -271,14 +463,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addStaffMember = useCallback((staffData: Omit<StaffMember, 'id' | 'createdAt' | 'lastActiveAt'>) => {
-    const newMember: StaffMember = {
-      ...staffData,
-      id: `stf-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      lastActiveAt: new Date().toISOString(),
-    };
-    persistStaff([newMember, ...staffMembers]);
+  const addStaffMember = useCallback(async (staffData: Omit<StaffMember, 'id' | 'createdAt' | 'lastActiveAt'>) => {
+    const created = await apiService.createStaff(staffData);
+    if (created) {
+      persistStaff([created, ...staffMembers]);
+    } else {
+      const newMember: StaffMember = {
+        ...staffData,
+        id: `stf-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString(),
+      };
+      persistStaff([newMember, ...staffMembers]);
+    }
   }, [staffMembers]);
 
   const updateStaffStatus = useCallback((staffId: string, status: StaffStatus) => {
@@ -286,11 +483,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       m.id === staffId ? { ...m, status, lastActiveAt: new Date().toISOString() } : m
     );
     persistStaff(updated);
+    apiService.updateStaffStatus(staffId, status).catch((err) => {
+      console.warn('Backend staff status sync error:', err);
+    });
   }, [staffMembers]);
 
-  const deleteStaffMember = useCallback((staffId: string) => {
+  const deleteStaffMember = useCallback(async (staffId: string) => {
     const updated = staffMembers.filter((m) => m.id !== staffId);
     persistStaff(updated);
+    apiService.deleteStaff(staffId).catch((err) => {
+      console.warn('Backend staff delete error:', err);
+    });
   }, [staffMembers]);
 
   const [globalSearch, setGlobalSearch] = useState('');
@@ -310,6 +513,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addComment,
         updateReportStatus,
         resolveSession,
+        refreshData: syncFromBackend,
         emergencyCount,
         globalEmergencyCount,
         staffMembers,
@@ -322,6 +526,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateJurisdictionSettings,
         activePerimeter,
         resetToGlobal,
+        purgeAllData,
       }}
     >
       {children}

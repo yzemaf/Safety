@@ -102,9 +102,9 @@ export const LandingPage: React.FC = () => {
   const testimonials = [
     {
       quote: 'Safety gives me total peace of mind walking home from late shifts. The automated check-in means I never have to worry.',
-      name: 'Amina Yusuf',
-      role: 'Lagos · Verified User',
-      flag: 'NG',
+      name: 'Amina Vance',
+      role: 'New York · Verified User',
+      flag: 'US',
     },
     {
       quote: 'One tap connects me to my emergency contacts with my exact location. It feels like having a personal guardian with me.',

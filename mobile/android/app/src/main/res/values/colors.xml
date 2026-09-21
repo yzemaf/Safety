@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Safety green — used as the FCM notification accent color -->
+    <color name="notification_color">#1B8529</color>
+</resources>

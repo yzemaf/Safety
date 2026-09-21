@@ -1,0 +1,74 @@
+# Miscellaneous & OS
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ / Android Studio related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+
+# Environment variables & secrets (Never commit secrets)
+.env
+.env.*
+.env.local
+!.env.example
+!.env.*.example
+lib/config/env.dart
+lib/config/secrets.dart
+!lib/config/env.example.dart
+key.properties
+*.keystore
+*.jks
+*.p12
+
+# Android Studio build artifacts
+/android/app/debug
+/android/app/profile
+/android/app/release
+.gradle/
+android/.gradle/
+android/local.properties
+
+# iOS / Xcode build artifacts
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+ios/.symlinks/
+ios/Pods/

@@ -1,15 +1,17 @@
-# Dependency directories
+# ==========================================
+# Safety Monorepo - Root .gitignore
+# Covers Backend (Node/TS), Admin (Vite/React), Mobile (Flutter/Dart)
+# ==========================================
+
+# ─── Dependencies ───
 node_modules/
 .pnp
 .pnp.js
+.npm/
+.yarn/
+.pnpm-store/
 
-# Build outputs
-dist/
-build/
-*.apk
-*.aab
-
-# Environment & Secrets (CRITICAL: Never commit API keys or production secrets)
+# ─── Environment & Secrets (CRITICAL: Never commit secrets or credentials) ───
 .env
 .env.*
 .env.local
@@ -17,26 +19,106 @@ build/
 .env.test.local
 .env.production.local
 !.env.example
+!.env.*.example
+serviceAccountKey*.json
+firebase-adminsdk*.json
+key.properties
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+*.cert
+lib/config/env.dart
+mobile/lib/config/env.dart
+lib/config/secrets.dart
+mobile/lib/config/secrets.dart
+!lib/config/env.example.dart
+!mobile/lib/config/env.example.dart
 
-# Logs
+# ─── Build & Distribution Outputs ───
+dist/
+dist-ssr/
+build/
+**/build/
+out/
+.next/
+.output/
+
+# ─── Flutter & Dart (Mobile) ───
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Mobile binaries & artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.ipa
+app.*.symbols
+app.*.map.json
+
+# Android Studio / Gradle outputs
+.gradle/
+**/android/.gradle/
+**/android/captures/
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# iOS / Xcode outputs
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/.symlinks/
+**/ios/Pods/
+**/ios/.idea/
+
+# ─── Logs & Diagnostics ───
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-*.log
+coverage/
+.nyc_output/
 
-# IDE & OS files
+# ─── IDE, OS & System Files ───
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
 .idea/
+*.iml
+*.ipr
+*.iws
+safety_app.iml
 .vscode/*
 !.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
+scratch/

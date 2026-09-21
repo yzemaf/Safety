@@ -8,9 +8,10 @@ export type JurisdictionMode = 'global' | 'community';
 
 export interface AdminJurisdictionSettings {
   mode: JurisdictionMode;
-  countryCode: string; // 'ALL' or ISO-2 code like 'NG', 'US', 'GB', 'KE'
-  stateCode: string;   // 'ALL' or state identifier like 'Lagos', 'CA', 'LON'
-  communityId: string; // 'ALL' or community identifier like 'ikeja', 'yaba', 'manhattan'
+  countryCode: string; // 'ALL' or ISO-2 code like 'US', 'GB', 'CA', 'DE'
+  stateCode: string;   // 'ALL' or state identifier like 'CA', 'NY', 'TX'
+  communityId: string; // 'ALL' or community identifier like 'manhattan', 'brooklyn'
+  communityName?: string; // Human-readable community name like 'Akowonjo', 'Isheri Olofin'
 }
 
 export interface BoundaryPolygonPoint {
@@ -127,4 +128,39 @@ export interface StaffMember {
   lastActiveAt: string;
   createdAt: string;
 }
+
+export interface LocationThreatPoint {
+  name: string;
+  incidentCount: number;
+  threatType: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  details: string;
+}
+
+export interface CitizenSafetyTip {
+  title: string;
+  recommendation: string;
+  urgency: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface CommunityAiReport {
+  community: string;
+  jurisdiction: string;
+  riskLevel: 'Low' | 'Moderate' | 'Elevated' | 'Severe';
+  riskScore: number;
+  executiveSummary: string;
+  locationsCovered: LocationThreatPoint[];
+  citizenAdvice: CitizenSafetyTip[];
+  commandCenterRecommendations: string[];
+  markdownReport: string;
+  metadata: {
+    totalIncidentsAnalyzed: number;
+    totalSafetySessionsAnalyzed: number;
+    emergencyBeaconsCount: number;
+    unrespondedOrEscalatedCount: number;
+    generatedAt: string;
+    modelUsed: string;
+  };
+}
+
 

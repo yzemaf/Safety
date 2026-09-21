@@ -1,0 +1,53 @@
+name: safety_app
+description: "Safety - Proactive Protection, Threat Radar & Emergency Escalation"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.6
+  provider: ^6.1.5+1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  intl: ^0.20.2
+  uuid: ^4.6.0
+  shared_preferences: ^2.2.3
+  http: ^1.2.2
+  google_maps_flutter: ^2.6.1
+  liquid_swipe: ^3.1.0
+  geolocator: ^11.0.0
+  battery_plus: ^5.0.3
+  google_fonts: ^6.3.0
+  showcaseview: ^5.1.0
+  flutter_overlay_window: ^0.5.0
+  firebase_core: ^3.4.0
+  firebase_messaging: ^15.1.0
+  cloud_firestore: ^5.4.0
+  flutter_local_notifications: ^17.2.2
+  agora_rtc_engine: ^6.3.2
+  permission_handler: ^11.3.1
+  vibration: ^3.1.8
+
+dependency_overrides:
+  firebase_core_web: 2.17.5
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/fonts/
+
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans.ttf

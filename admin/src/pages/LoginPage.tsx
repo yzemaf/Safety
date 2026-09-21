@@ -35,8 +35,12 @@ export const LoginPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      await login(email.trim(), password.trim());
-      navigate(from, { replace: true });
+      const success = await login(email.trim(), password.trim());
+      if (success) {
+        navigate(from, { replace: true });
+      } else {
+        setError('Invalid admin credentials. Please check your email and password.');
+      }
     } catch {
       setError('Invalid admin credentials. Please check your email and password.');
     } finally {

@@ -1,0 +1,10 @@
+.gradle
+captures/
+default.properties
+local.properties
+GeneratedPluginRegistrant.java
+
+# Keystore & Signing secrets
+key.properties
+**/*.keystore
+**/*.jks
