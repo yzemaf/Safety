@@ -26,6 +26,7 @@ Safety replaces reactive "panic buttons" with a proactive heartbeat safety engin
 ### Demo Credentials for Testing:
 * **Super Admin**: `admin@safety.org` / `admin123`
 * **User**: `user@safety.org` / `123456`
+* **Default Emergency Pins**: `1234`
 
 ---
 
