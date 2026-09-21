@@ -18,7 +18,7 @@ Safety replaces reactive "panic buttons" with a proactive heartbeat safety engin
 
 > **Live Testing URL**: The web app and dispatch portal is hosted for live testing, including the interactive Walk Simulator, Live Threat Radar, and Android APK Download:
 
-* **Live Testing Link**: **`https://safety-thon.vercel.app/`**
+* **Live Testing Link**: [https://safety-thon.vercel.app/](https://safety-thon.vercel.app/)
 * **Direct Android APK Download**: Available directly from the landing page on the live link above (includes 1-tap download and a quick QR code scanner for physical phones).
 
 ### Demo Credentials for Testing:
