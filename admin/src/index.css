@@ -615,9 +615,74 @@ html, body, #root {
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
+  z-index: 20;
+  position: relative;
   transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), 
               opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
               transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Floating Map Zoom & Recenter Controls */
+.radar-zoom-controls {
+  position: absolute;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.radar-zoom-btn-group {
+  display: flex;
+  flex-direction: column;
+  background-color: #FFFFFF;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  border: 1px solid var(--border-hairline);
+  overflow: hidden;
+}
+
+.radar-zoom-btn-group button {
+  width: 34px;
+  height: 34px;
+  border: none;
+  background-color: #FFFFFF;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main);
+  transition: background-color 0.15s ease;
+}
+
+.radar-zoom-btn-group button:hover {
+  background-color: var(--bg-hover);
+}
+
+.radar-zoom-divider {
+  height: 1px;
+  background-color: var(--border-hairline);
+}
+
+.radar-recenter-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background-color: #FFFFFF;
+  border: 1px solid var(--border-hairline);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.radar-recenter-btn:hover {
+  background-color: var(--bg-hover);
 }
 
 /* =========================================================
@@ -1462,10 +1527,38 @@ html, body, #root {
     overflow: hidden !important;
   }
 
-  /* Left dispatch queue: collapsed by default on mobile, becomes a slide-up sheet */
+  /* Left dispatch queue: slide up sheet when active on mobile */
   .radar-left-panel {
-    /* Hidden on mobile — user can show via toggle */
+    position: fixed !important;
+    bottom: 48px !important; /* docked directly above 48px bottom nav */
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-height: 62vh !important;
+    overflow-y: auto !important;
+    border-radius: 20px 20px 0 0 !important;
+    box-shadow: 0 -10px 40px rgba(15, 23, 42, 0.28) !important;
+    z-index: 10001 !important;
+    border-right: none !important;
+    border-top: 1px solid var(--border-hairline) !important;
+    margin-right: 0 !important;
+    transform: none !important;
+    background-color: #FFFFFF !important;
+    display: flex !important;
+  }
+
+  .radar-left-panel[style*="width: 0px"],
+  .radar-left-panel[style*="opacity: 0"] {
     display: none !important;
+  }
+
+  .radar-left-panel > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 0.85rem !important;
+    border: none !important;
+    overflow-y: auto !important;
   }
 
   /* Center map: full height */
@@ -1526,10 +1619,13 @@ html, body, #root {
     display: none;
   }
 
-  /* Floating zoom buttons: move above bottom nav */
+  /* Floating zoom and recenter buttons: fixed at bottom right above bottom nav */
   .radar-zoom-controls {
-    bottom: 56px !important;
-    right: 0.5rem !important;
+    position: fixed !important;
+    bottom: 60px !important;
+    right: 12px !important;
+    z-index: 9998 !important;
+    pointer-events: auto !important;
   }
 
   /* ---- Incidents Page ---- */

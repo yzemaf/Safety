@@ -129,9 +129,13 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
-  // Collapsible panels state
-  const [isQueueCollapsed, setIsQueueCollapsed] = useState(false);
-  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
+  // Collapsible panels state - default collapsed on mobile (≤768px)
+  const [isQueueCollapsed, setIsQueueCollapsed] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 768,
+  );
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 768,
+  );
 
   // Filter state for the dispatch queue
   const [queueFilter, setQueueFilter] = useState<
@@ -897,6 +901,9 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     (sess: SafetySession) => {
       setSelectedSessionId(sess.id);
       setIsInspectorCollapsed(false);
+      if (typeof window !== "undefined" && window.innerWidth <= 768) {
+        setIsQueueCollapsed(true);
+      }
 
       const targetJur = findJurisdictionForSession(sess);
       if (targetJur) {
@@ -2165,13 +2172,13 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
             left: "1rem",
             right: "1rem",
             display: "flex",
-            justifyContent: "space-between",
             alignItems: "center",
+            gap: "0.5rem",
             zIndex: 1000,
             pointerEvents: "none",
           }}
         >
-          {/* Left: Re-open Queue button + Mode Toggle & Cascaded Selectors */}
+          {/* Re-open Queue button + Mode Toggle & Cascaded Selectors */}
           <div
             style={{
               display: "flex",
@@ -2196,10 +2203,32 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                   alignItems: "center",
                   gap: "0.4rem",
                 }}
-                title="Open Active Users"
+                title="Open Active Users Queue"
               >
                 <Users size={15} strokeWidth={2.2} color="var(--primary)" />
                 <span>Users ({filteredSessions.length})</span>
+              </button>
+            )}
+
+            {isInspectorCollapsed && selectedSession && (
+              <button
+                onClick={() => setIsInspectorCollapsed(false)}
+                className="btn btn-outline"
+                style={{
+                  padding: "0.42rem 0.85rem",
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  borderRadius: "var(--radius-pill)",
+                  backgroundColor: "#FFFFFF",
+                  boxShadow: "0 2px 10px rgba(15, 23, 42, 0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                }}
+                title="Open User Details"
+              >
+                <User size={15} strokeWidth={2.2} color="var(--primary)" />
+                <span>User Details</span>
               </button>
             )}
 
@@ -2377,108 +2406,36 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
               </div>
             )}
           </div>
+        </div>
 
-          {/* Right Floating Controls: Re-open Inspector pill + Zoom & Recenter */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              pointerEvents: "auto",
-            }}
-          >
-            {isInspectorCollapsed && selectedSession && (
-              <button
-                onClick={() => setIsInspectorCollapsed(false)}
-                className="btn btn-outline"
-                style={{
-                  padding: "0.42rem 0.85rem",
-                  fontSize: "0.75rem",
-                  fontWeight: 700,
-                  borderRadius: "var(--radius-pill)",
-                  backgroundColor: "#FFFFFF",
-                  boxShadow: "0 2px 10px rgba(15, 23, 42, 0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                }}
-                title="Open User Details"
-              >
-                <User size={15} strokeWidth={2.2} color="var(--primary)" />
-                <span>User Details</span>
-              </button>
-            )}
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                backgroundColor: "#FFFFFF",
-                borderRadius: "var(--radius-sm)",
-                boxShadow: "0 2px 10px rgba(15, 23, 42, 0.08)",
-                border: "1px solid var(--border-hairline)",
-                overflow: "hidden",
-              }}
-            >
-              <button
-                onClick={() => handleZoom("in")}
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  border: "none",
-                  backgroundColor: "#FFFFFF",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                title="Zoom In"
-              >
-                <Plus size={14} />
-              </button>
-              <div
-                style={{
-                  height: "1px",
-                  backgroundColor: "var(--border-hairline)",
-                }}
-              />
-              <button
-                onClick={() => handleZoom("out")}
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  border: "none",
-                  backgroundColor: "#FFFFFF",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                title="Zoom Out"
-              >
-                <Minus size={14} />
-              </button>
-            </div>
-
+        {/* Floating Map Zoom (+/-) & Recenter Controls — Fixed at Bottom Right */}
+        <div className="radar-zoom-controls">
+          <div className="radar-zoom-btn-group">
             <button
-              onClick={handleRecenter}
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "#FFFFFF",
-                border: "1px solid var(--border-hairline)",
-                boxShadow: "0 2px 10px rgba(15, 23, 42, 0.08)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-              title="Recenter Map on Target Jurisdiction"
+              onClick={() => handleZoom("in")}
+              title="Zoom In"
+              aria-label="Zoom in"
             >
-              <Compass size={14} color="var(--primary)" />
+              <Plus size={15} />
+            </button>
+            <div className="radar-zoom-divider" />
+            <button
+              onClick={() => handleZoom("out")}
+              title="Zoom Out"
+              aria-label="Zoom out"
+            >
+              <Minus size={15} />
             </button>
           </div>
+
+          <button
+            onClick={handleRecenter}
+            className="radar-recenter-btn"
+            title="Recenter Map on Target Jurisdiction"
+            aria-label="Recenter Map"
+          >
+            <Compass size={16} color="var(--primary)" />
+          </button>
         </div>
 
         {/* Map Viewport Container */}

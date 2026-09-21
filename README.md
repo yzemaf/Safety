@@ -135,76 +135,217 @@ Safety/
 
 ---
 
-## 🚀 Quick Start Guide
+## 🚀 How to Run the Source Code (Quick Start Guide)
 
-### Prerequisites
-* **Node.js**: `v18.0.0+`
-* **Flutter SDK**: `v3.3.3+` (with Android Studio & Dart SDK)
-* **MongoDB Atlas** database URI
-* **Firebase Project** with Cloud Firestore & Cloud Messaging enabled
-* **Agora.io Developer Account** (App ID & Certificate for voice calling)
-* **Google Gemini API Key** (for AI intelligence summaries)
-* ~~Google Maps API Key~~ — **No longer required** for the default OSM/Leaflet map engine (optional if switching to Google Maps engine)
+This repository is organized as a monorepo containing three core components:
+1. **[Admin & Web Dispatch Portal](file:///c:/Users/DELL/Safety/admin)** (`admin/`) — React 19 + Vite web client for landing, live dispatch radar, incidents triage, and Agora WebRTC voice calling.
+2. **[Mobile Application](file:///c:/Users/DELL/Safety/mobile)** (`mobile/`) — Flutter cross-platform mobile app (Android / iOS) with proactive heartbeat safety checks, floating overlay, and real-time community radar.
+3. **[Backend API & Escalation Engine](file:///c:/Users/DELL/Safety/backend)** (`backend/`) — Fastify Node.js & TypeScript service with MongoDB spatial indexes, Firebase sync, Agora token generation, and Gemini AI threat briefings.
 
 ---
 
-### 1. Backend Server Setup
+### 📋 Prerequisites
+
+| Component | Prerequisites |
+|---|---|
+| **Admin & Web Portal** | Node.js `v18.0.0+`, npm `v9+` |
+| **Mobile App** | Flutter SDK `v3.3.3+`, Dart SDK, Android Studio / Xcode, Android SDK (API level 26+), physical phone or emulator |
+| **Backend API** | Node.js `v18.0.0+`, MongoDB Atlas (or local MongoDB), Firebase Project, Agora Developer Account |
+
+---
+
+### ⚡ Quick Run Summary (Cheat Sheet)
 
 ```bash
-cd backend
-npm install
+# 1. Start Backend API (Port 5000)
+cd backend && npm install && cp .env.example .env && npm run seed && npm run dev
 
-# Configure environment variables (copy from template)
-cp .env.example .env
-# Edit .env with your MongoDB URI, JWT Secret, Agora Keys, Firebase credentials, and Gemini API Key
+# 2. Start Admin & Web Dispatch Portal (Port 5173)
+cd admin && npm install && cp .env.example .env && npm run dev
 
-# Start development server on http://localhost:5000
-npm run dev
+# 3. Start Flutter Mobile App
+cd mobile && cp lib/config/env.example.dart lib/config/env.dart && flutter pub get && flutter run
 ```
 
 ---
 
-### 2. Admin Web Portal Setup
+### 1️⃣ Running the Admin & Web Dispatch Portal (`admin/`)
 
+The **Admin Web Portal** provides the interactive landing page, real-time command center radar, emergency Agora voice dispatch, and incident triage dashboard.
+
+#### Step 1: Navigate to the `admin` directory and install dependencies
 ```bash
 cd admin
 npm install
-
-# Configure environment variables
-cp .env.example .env
-# Edit .env with your backend API URL, Agora App ID, and Firebase Web Config
-# Note: VITE_GOOGLE_MAPS_API_KEY is optional — the default map engine is OpenStreetMap/Leaflet (no key needed)
-# Only set it if you switch ACTIVE_MAP_ENGINE to 'googlemaps' in LiveRadarMap.tsx
-
-# Start Vite dev server on http://localhost:5173
-npm run dev
 ```
 
-Demo credentials for testing:
+#### Step 2: Configure Environment Variables
+Create your local environment file by copying the template:
+```bash
+cp .env.example .env
+```
+
+Open `.env` and set the following parameters:
+```env
+# Fastify Backend API Base URL
+VITE_API_URL=http://localhost:5000/api
+
+# Agora App ID (for in-browser WebRTC two-way voice calling)
+VITE_AGORA_APP_ID=your_agora_app_id_here
+
+# Firebase Web Client Configuration JSON (for real-time Firestore synchronization)
+VITE_FIREBASE_CONFIG={"apiKey":"your_api_key","authDomain":"safety-711a9.firebaseapp.com","projectId":"safety-711a9","storageBucket":"safety-711a9.firebasestorage.app","messagingSenderId":"your_sender_id","appId":"your_app_id","databaseURL":"https://safety-711a9-default-rtdb.europe-west1.firebasedatabase.app"}
+
+# (Optional) Google Maps JavaScript API Key
+# Note: Leaflet + OpenStreetMap is the DEFAULT engine and requires NO API KEY.
+# Only populate this if switching ACTIVE_MAP_ENGINE to 'googlemaps' in LiveRadarMap.tsx
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
+```
+
+#### Step 3: Start the Vite Development Server
+```bash
+npm run dev
+```
+The web portal will be accessible at **`http://localhost:5173`**.
+
+#### Step 4: Login & Testing Credentials
 * **Super Admin**: `admin@safety.org` / `admin123`
+* **Test User**: `user@safety.org` / `123456`
+* **Default PIN**: `1234`
+
+#### Additional Admin Scripts
+* **Production Build**: `npm run build` (outputs optimized bundle to `dist/`)
+* **Local Production Preview**: `npm run preview`
+* **Linting**: `npm run lint`
 
 ---
 
-### 3. Flutter Mobile App Setup
+### 2️⃣ Running the Mobile Application (`mobile/`)
 
+The **Mobile App** is built with Flutter and supports Android and iOS. It delivers proactive heartbeat check-ins, floating system overlays, background grace-period alerts, community incident heatmaps, and Agora WebRTC voice calling.
+
+#### Step 1: Navigate to the `mobile` directory and fetch packages
 ```bash
 cd mobile
-
-# Configure mobile environment variables (copy from template)
-cp lib/config/env.example.dart lib/config/env.dart
-# Edit lib/config/env.dart with your Agora App ID and Backend URL
-# Note: googleMapsApiKey is only needed if you switch _activeEngine to MapEngine.googleMaps
-# in awareness_radar_screen.dart. The default is MapEngine.openStreetMap (no key required).
-
-# (Optional, only if using Google Maps engine) Add MAPS_API_KEY to android/local.properties:
-# MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
-
-# Install Flutter dependencies
 flutter pub get
-
-# Launch on connected Android device or emulator
-flutter run
 ```
+
+#### Step 2: Configure Mobile Environment Variables
+Copy the template configuration file:
+```bash
+cp lib/config/env.example.dart lib/config/env.dart
+```
+
+Open `lib/config/env.dart` and configure your settings:
+```dart
+class Env {
+  // Agora App ID for two-way emergency audio
+  static const String agoraAppId = 'YOUR_AGORA_APP_ID';
+
+  // Optional: only if using Google Maps engine (Default is OpenStreetMap)
+  static const String googleMapsApiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
+
+  // Backend API URL:
+  // - Android Emulator: http://10.0.2.2:5000/api
+  // - iOS Simulator:    http://localhost:5000/api
+  // - Physical Device:  http://<YOUR_LOCAL_IP>:5000/api (e.g. http://192.168.1.50:5000/api)
+  // - Production:       https://your-production-domain.com/api
+  static const String apiBaseUrl = 'http://10.0.2.2:5000/api';
+}
+```
+
+> [!TIP]
+> **Connecting Mobile to Local Backend**:
+> - If running on the **Android Emulator**, use `http://10.0.2.2:5000/api` to reach your host machine.
+> - If running on a **physical device connected via USB/Wi-Fi**, use your machine's LAN IP (e.g., `http://192.168.x.x:5000/api`) and ensure your phone is on the same local network.
+
+#### Step 3: Run the App on a Device or Emulator
+Ensure your emulator is booted or your physical Android/iOS phone is connected with USB Debugging enabled:
+
+```bash
+# Check available devices
+flutter devices
+
+# Launch the app
+flutter run
+
+# Or target a specific device directly
+flutter run -d <device-id>
+```
+
+#### Step 4: Build Release APK (Android)
+To build a standalone installable Android package:
+```bash
+flutter build apk --release
+```
+The output APK will be generated at `build/app/outputs/flutter-apk/app-release.apk`.
+
+#### Required Permissions on First Launch:
+* **Location Permission**: For GPS tracking and reverse geocoding nearby incidents.
+* **Microphone Permission**: For Agora WebRTC emergency voice communication.
+* **System Overlay Permission** (`Display over other apps`): Required for the draggable floating pill widget during active safety walks.
+* **Notification Permission**: For background countdown timer alerts and proximity danger alerts.
+
+---
+
+### 3️⃣ Running the Backend API & Escalation Engine (`backend/`)
+
+The **Backend** is a high-performance Fastify Node.js server that handles REST API endpoints, JWT authentication, MongoDB 2dsphere spatial indexing, Agora RTC token signing, Google Gemini AI threat briefings, and background auto-escalation workers.
+
+#### Step 1: Navigate to the `backend` directory and install dependencies
+```bash
+cd backend
+npm install
+```
+
+#### Step 2: Configure Environment Variables
+Copy the template configuration file:
+```bash
+cp .env.example .env
+```
+
+Edit `backend/.env` with your credentials:
+```env
+PORT=5000
+HOST=0.0.0.0
+NODE_ENV=development
+
+# MongoDB Atlas Database URI
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.example.mongodb.net/safety?retryWrites=true&w=majority
+
+# JWT Authentication Secret Key
+JWT_SECRET=your_jwt_secret_key_here
+
+# Agora RTC Voice Configuration
+AGORA_APP_ID=your_agora_app_id_here
+AGORA_APP_CERTIFICATE=your_agora_app_certificate_here
+
+# Firebase Admin SDK & Realtime Database
+FIREBASE_PROJECT_ID=safety-711a9
+FIREBASE_SERVICE_ACCOUNT_PATH=./serviceAccountKey.json
+FIREBASE_DATABASE_URL=https://safety-711a9-default-rtdb.europe-west1.firebasedatabase.app
+
+# Google Gemini AI Threat Analysis Config
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
+
+#### Step 3: Seed Initial Data (Admin & Sample Incidents)
+Run the built-in seeder to populate sample users, super admins, and geo-located community incidents:
+```bash
+npm run seed
+```
+
+#### Step 4: Start the Development Server
+```bash
+npm run dev
+```
+The server will start listening at **`http://localhost:5000`**.
+
+#### Additional Backend Scripts
+* **Compile TypeScript**: `npm run build` (outputs to `dist/`)
+* **Start Production Server**: `npm start`
+* **Clean Database**: `npm run clean`
 
 ---
 
@@ -220,3 +361,4 @@ Refer to the service templates for full details:
 ## 📖 Deep-Dive Architecture Documentation
 
 For complete data models, state transition diagrams, WebRTC audio pipelines, Leaflet/OpenStreetMap dual-engine architecture details, OSM Nominatim boundary polygon algorithms, and API specifications, see **[`TECHNICAL_SPEC.md`](file:///c:/Users/DELL/Safety/TECHNICAL_SPEC.md)**.
+
