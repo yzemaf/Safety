@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'env.dart';
 
 class AppConstants {
@@ -9,10 +7,6 @@ class AppConstants {
 
   // API Endpoints & Service Keys (Fastify Backend on port 5000)
   static String get defaultApiBaseUrl {
-    if (kIsWeb) return Env.apiBaseUrl;
-    try {
-      if (Platform.isAndroid) return 'http://127.0.0.1:5000/api';
-    } catch (_) {}
     return Env.apiBaseUrl;
   }
 
@@ -44,7 +38,8 @@ class AppConstants {
   static const String keyAutoAnswer = 'safety_auto_answer';
   static const String keyEmergencyContacts = 'safety_emergency_contacts';
   static const String keyHasSeenOnboarding = 'safety_has_seen_onboarding';
-  static const String keyHasSeenSafetyModeTour = 'safety_has_seen_safety_mode_tour';
+  static const String keyHasSeenSafetyModeTour =
+      'safety_has_seen_safety_mode_tour';
   static const String keyHasSafetyPin = 'safety_has_safety_pin';
 
   // Google Maps Minimalist Light Silver / Pastel Theme (matches Admin /admin style)
@@ -148,4 +143,3 @@ class AppConstants {
 ]
 ''';
 }
-

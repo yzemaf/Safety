@@ -9,123 +9,80 @@ import '../models/safety_session.dart';
 import '../models/user.dart';
 
 class ApiService {
-  static String _activeBaseUrl = AppConstants.defaultApiBaseUrl;
+  static String _getLocalBaseUrl() {
+    try {
+      if (Platform.isAndroid) {
+        return 'http://127.0.0.1:5000/api';
+      }
+    } catch (_) {}
+    return 'http://localhost:5000/api';
+  }
+
+  /// Default API Base URL: in debug mode uses local machine/emulator, in release uses deployed endpoint.
+  static String get defaultBaseUrl =>
+      kDebugMode ? _getLocalBaseUrl() : AppConstants.defaultApiBaseUrl;
+
+  final String baseUrl;
   final http.Client _client;
 
   ApiService({
     String? baseUrl,
     http.Client? client,
-  })  : _client = client ?? http.Client() {
-    if (baseUrl != null) {
-      _activeBaseUrl = baseUrl;
-    }
-  }
+  })  : baseUrl = baseUrl ?? defaultBaseUrl,
+        _client = client ?? http.Client();
 
-  String get baseUrl => _activeBaseUrl;
-
-  static List<String> get _candidateUrls {
-    if (kIsWeb) return const ['http://localhost:5000/api', 'http://127.0.0.1:5000/api'];
-    try {
-      if (Platform.isAndroid) {
-        return const [
-          'http://127.0.0.1:5000/api',
-          'http://10.117.147.6:5000/api',
-          'http://localhost:5000/api',
-          'http://10.0.2.2:5000/api',
-        ];
-      }
-    } catch (_) {}
-    return const ['http://localhost:5000/api', 'http://127.0.0.1:5000/api'];
-  }
-
-  Future<http.Response> _postWithFallback(
+  Future<http.Response> _post(
     String path, {
     Map<String, String>? headers,
     Object? body,
-    Duration timeout = const Duration(seconds: 4),
+    Duration timeout = const Duration(seconds: 10),
   }) async {
-    final urlsToTry = [_activeBaseUrl, ..._candidateUrls.where((u) => u != _activeBaseUrl)];
-    for (int i = 0; i < urlsToTry.length; i++) {
-      final base = urlsToTry[i];
-      try {
-        debugPrint('[Mobile ApiService] POST $base$path');
-        final uri = Uri.parse('$base$path');
-        final res = await _client
-            .post(
-              uri,
-              headers: headers ?? {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(timeout);
-        _activeBaseUrl = base;
-        return res;
-      } catch (e) {
-        debugPrint('[Mobile ApiService] Error connecting to $base$path: $e');
-        if (i == urlsToTry.length - 1) rethrow;
-      }
-    }
-    throw Exception('All candidate URLs failed');
+    final uri = Uri.parse('$baseUrl$path');
+    debugPrint('[Mobile ApiService] POST $uri');
+    return await _client
+        .post(
+          uri,
+          headers: headers ?? {'Content-Type': 'application/json'},
+          body: body,
+        )
+        .timeout(timeout);
   }
 
-  Future<http.Response> _getWithFallback(
+  Future<http.Response> _get(
     String path, {
     Map<String, String>? headers,
     Map<String, String>? queryParameters,
-    Duration timeout = const Duration(seconds: 4),
+    Duration timeout = const Duration(seconds: 10),
   }) async {
-    final urlsToTry = [_activeBaseUrl, ..._candidateUrls.where((u) => u != _activeBaseUrl)];
-    for (int i = 0; i < urlsToTry.length; i++) {
-      final base = urlsToTry[i];
-      try {
-        var uri = Uri.parse('$base$path');
-        if (queryParameters != null && queryParameters.isNotEmpty) {
-          uri = uri.replace(queryParameters: queryParameters);
-        }
-        debugPrint('[Mobile ApiService] GET $uri');
-        final res = await _client.get(uri, headers: headers).timeout(timeout);
-        _activeBaseUrl = base;
-        return res;
-      } catch (e) {
-        debugPrint('[Mobile ApiService] Error connecting to $base$path: $e');
-        if (i == urlsToTry.length - 1) rethrow;
-      }
+    var uri = Uri.parse('$baseUrl$path');
+    if (queryParameters != null && queryParameters.isNotEmpty) {
+      uri = uri.replace(queryParameters: queryParameters);
     }
-    throw Exception('All candidate URLs failed');
+    debugPrint('[Mobile ApiService] GET $uri');
+    return await _client.get(uri, headers: headers).timeout(timeout);
   }
 
-  Future<http.Response> _patchWithFallback(
+  Future<http.Response> _patch(
     String path, {
     Map<String, String>? headers,
     Object? body,
-    Duration timeout = const Duration(seconds: 4),
+    Duration timeout = const Duration(seconds: 10),
   }) async {
-    final urlsToTry = [_activeBaseUrl, ..._candidateUrls.where((u) => u != _activeBaseUrl)];
-    for (int i = 0; i < urlsToTry.length; i++) {
-      final base = urlsToTry[i];
-      try {
-        debugPrint('[Mobile ApiService] PATCH $base$path');
-        final uri = Uri.parse('$base$path');
-        final res = await _client
-            .patch(
-              uri,
-              headers: headers ?? {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(timeout);
-        _activeBaseUrl = base;
-        return res;
-      } catch (e) {
-        debugPrint('[Mobile ApiService] Error connecting to $base$path: $e');
-        if (i == urlsToTry.length - 1) rethrow;
-      }
-    }
-    throw Exception('All candidate URLs failed');
+    final uri = Uri.parse('$baseUrl$path');
+    debugPrint('[Mobile ApiService] PATCH $uri');
+    return await _client
+        .patch(
+          uri,
+          headers: headers ?? {'Content-Type': 'application/json'},
+          body: body,
+        )
+        .timeout(timeout);
   }
 
   // ─── AUTHENTICATION & SESSIONS ─────────────────────────────────────────────
   Future<User?> createGuestSession({String? deviceId, String? name}) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/guest-session',
         body: jsonEncode({'deviceId': deviceId, 'name': name}),
       );
@@ -143,7 +100,7 @@ class ApiService {
 
   Future<Map<String, dynamic>?> login({required String email, required String password}) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/login',
         body: jsonEncode({'email': email, 'password': password}),
       );
@@ -165,7 +122,7 @@ class ApiService {
     String? phone,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/register',
         body: jsonEncode({
           'name': name,
@@ -192,7 +149,7 @@ class ApiService {
     String? email,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/profile',
         body: jsonEncode({
           'userId': userId,
@@ -219,7 +176,7 @@ class ApiService {
     required String newPassword,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/change-password',
         body: jsonEncode({
           'userId': userId,
@@ -260,7 +217,7 @@ class ApiService {
       }
       if (communityId != null) body['communityId'] = communityId;
 
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/settings',
         body: jsonEncode(body),
       );
@@ -292,7 +249,7 @@ class ApiService {
             : '');
 
     try {
-      final response = await _postWithFallback(
+      final response = await _post(
         '/sessions/start',
         body: jsonEncode({
           'userId': user.id,
@@ -352,7 +309,7 @@ class ApiService {
     String? addressName,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/sessions/ping',
         body: jsonEncode({
           'sessionId': sessionId,
@@ -378,14 +335,14 @@ class ApiService {
     int intervalMinutes = 5,
   }) async {
     try {
-      await _postWithFallback(
+      await _post(
         '/sessions/check-in',
         body: jsonEncode({
           'sessionId': sessionId,
           if (userId != null && userId.isNotEmpty) 'userId': userId,
           'intervalMinutes': intervalMinutes,
         }),
-        timeout: const Duration(seconds: 3),
+        timeout: const Duration(seconds: 4),
       );
     } catch (_) {}
   }
@@ -404,7 +361,7 @@ class ApiService {
     String? userPhone,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/sessions/trigger-sos',
         body: jsonEncode({
           'sessionId': sessionId,
@@ -419,7 +376,7 @@ class ApiService {
           if (userName != null && userName.isNotEmpty) 'userName': userName,
           if (userPhone != null && userPhone.isNotEmpty) 'userPhone': userPhone,
         }),
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(seconds: 5),
       );
       if (res.statusCode == 200 || res.statusCode == 201) {
         return jsonDecode(res.body) as Map<String, dynamic>;
@@ -436,14 +393,14 @@ class ApiService {
     String status = 'resolved',
   }) async {
     try {
-      await _postWithFallback(
+      await _post(
         '/sessions/resolve',
         body: jsonEncode({
           'sessionId': sessionId,
           if (userId != null && userId.isNotEmpty) 'userId': userId,
           'status': status,
         }),
-        timeout: const Duration(seconds: 3),
+        timeout: const Duration(seconds: 4),
       );
     } catch (_) {}
   }
@@ -466,10 +423,10 @@ class ApiService {
         queryParams['lng'] = center.lng.toString();
       }
 
-      final response = await _getWithFallback(
+      final response = await _get(
         '/incidents',
         queryParameters: queryParams,
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(seconds: 5),
       );
 
       if (response.statusCode == 200) {
@@ -485,10 +442,10 @@ class ApiService {
 
   Future<IncidentReport> submitIncident(IncidentReport report) async {
     try {
-      final response = await _postWithFallback(
+      final response = await _post(
         '/incidents',
         body: jsonEncode(report.toJson()),
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(seconds: 5),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -506,10 +463,10 @@ class ApiService {
     required Map<String, dynamic> updateData,
   }) async {
     try {
-      final response = await _patchWithFallback(
+      final response = await _patch(
         '/incidents/$incidentId',
         body: jsonEncode(updateData),
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(seconds: 5),
       );
 
       if (response.statusCode == 200) {
@@ -542,7 +499,7 @@ class ApiService {
         if (lng != null) 'lng': lng,
         if (incidents != null && incidents.isNotEmpty) 'incidents': incidents,
       };
-      final response = await _postWithFallback(
+      final response = await _post(
         '/incidents/ai-summary',
         body: jsonEncode(body),
         timeout: const Duration(seconds: 30),
@@ -561,9 +518,9 @@ class ApiService {
   // ─── AGORA RTC TOKEN & CALL ACTIONS ─────────────────────────────────────
   Future<String?> fetchAgoraToken(String channelName) async {
     try {
-      final res = await _getWithFallback(
+      final res = await _get(
         '/agora/token/$channelName',
-        timeout: const Duration(seconds: 3),
+        timeout: const Duration(seconds: 4),
       );
 
       if (res.statusCode == 200) {
@@ -581,7 +538,7 @@ class ApiService {
   }) async {
     if (sessionId.isEmpty) return false;
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/sessions/$sessionId/call-response',
         body: jsonEncode({
           'status': status,
@@ -600,7 +557,7 @@ class ApiService {
   }) async {
     if (sessionId.isEmpty) return false;
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/sessions/$sessionId/end-call',
         body: jsonEncode({
           if (userId != null && userId.isNotEmpty) 'userId': userId,
@@ -618,7 +575,7 @@ class ApiService {
     String? userId,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/safety-pin',
         body: jsonEncode({
           'pin': pin.trim(),
@@ -640,7 +597,7 @@ class ApiService {
     String? userId,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/safety-pin/verify',
         body: jsonEncode({
           'pin': pin.trim(),
@@ -663,7 +620,7 @@ class ApiService {
     String? userId,
   }) async {
     try {
-      final res = await _postWithFallback(
+      final res = await _post(
         '/auth/safety-pin/change',
         body: jsonEncode({
           'currentPin': currentPin.trim(),
@@ -681,3 +638,4 @@ class ApiService {
     }
   }
 }
+

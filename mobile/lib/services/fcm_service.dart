@@ -5,8 +5,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
-import '../config/constants.dart';
 import '../firebase_options.dart';
+import 'api_service.dart';
 import 'foreground_call_service.dart';
 
 @pragma('vm:entry-point')
@@ -165,7 +165,7 @@ class FcmService {
       if (token == null || token.isEmpty) return;
 
       await http.post(
-        Uri.parse('${AppConstants.defaultApiBaseUrl}/users/device-token'),
+        Uri.parse('${ApiService.defaultBaseUrl}/users/device-token'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'userId': userId,
