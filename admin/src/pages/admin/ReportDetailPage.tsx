@@ -22,7 +22,9 @@ export const ReportDetailPage: React.FC = () => {
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  const report = reports.find((r) => r.id === id || (r as any).customId === id || (r as any)._id === id);
+  const report = reports.find(
+    (r) => r.id === id || (r as any).customId === id || (r as any)._id === id,
+  );
 
   if (!report) {
     return (
@@ -98,7 +100,8 @@ export const ReportDetailPage: React.FC = () => {
       } else {
         notification.error({
           message: "Failed to Post Note",
-          description: "Could not persist note to server. Please verify network connection.",
+          description:
+            "Could not persist note to server. Please verify network connection.",
           placement: "topRight",
           duration: 4.5,
         });
@@ -106,7 +109,8 @@ export const ReportDetailPage: React.FC = () => {
     } catch (err: any) {
       notification.error({
         message: "Error Posting Note",
-        description: err?.message || "An unexpected error occurred while posting note.",
+        description:
+          err?.message || "An unexpected error occurred while posting note.",
         placement: "topRight",
         duration: 4.5,
       });
@@ -139,7 +143,8 @@ export const ReportDetailPage: React.FC = () => {
     } catch (err: any) {
       notification.error({
         message: "Status Update Error",
-        description: err?.message || "An unexpected error occurred while updating status.",
+        description:
+          err?.message || "An unexpected error occurred while updating status.",
         placement: "topRight",
         duration: 4.5,
       });
@@ -152,6 +157,7 @@ export const ReportDetailPage: React.FC = () => {
 
   return (
     <div
+      className="report-detail-outer"
       style={{
         padding: "2rem",
         maxWidth: "1180px",
@@ -188,6 +194,7 @@ export const ReportDetailPage: React.FC = () => {
 
       {/* Main Master Card */}
       <div
+        className="report-detail-card"
         style={{
           backgroundColor: "#FFFFFF",
           border: "1.5px solid #E2E8F0",
@@ -367,6 +374,7 @@ export const ReportDetailPage: React.FC = () => {
 
         {/* 2-Column Details Body */}
         <div
+          className="report-detail-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "1.15fr 1fr",
@@ -444,18 +452,20 @@ export const ReportDetailPage: React.FC = () => {
                 >
                   {report.addressName || "Location Not Specified"}
                 </div>
-                {report.location && (report.location.lat !== 0 || report.location.lng !== 0) && (
-                  <div
-                    style={{
-                      fontSize: "0.72rem",
-                      color: "var(--text-muted)",
-                      fontFamily: "var(--font-mono)",
-                      marginTop: "3px",
-                    }}
-                  >
-                    Coordinates: {Number(report.location.lat).toFixed(5)}, {Number(report.location.lng).toFixed(5)}
-                  </div>
-                )}
+                {report.location &&
+                  (report.location.lat !== 0 || report.location.lng !== 0) && (
+                    <div
+                      style={{
+                        fontSize: "0.72rem",
+                        color: "var(--text-muted)",
+                        fontFamily: "var(--font-mono)",
+                        marginTop: "3px",
+                      }}
+                    >
+                      Coordinates: {Number(report.location.lat).toFixed(5)},{" "}
+                      {Number(report.location.lng).toFixed(5)}
+                    </div>
+                  )}
               </div>
 
               <div>

@@ -34,7 +34,10 @@ import {
   prettifySlug,
   type CommunityData,
 } from "../../services/jurisdictionData";
-import { searchOsmPlaces, type OsmPlaceResult } from "../../services/osmLocationService";
+import {
+  searchOsmPlaces,
+  type OsmPlaceResult,
+} from "../../services/osmLocationService";
 
 export const IncidentsPage: React.FC = () => {
   const {
@@ -68,7 +71,9 @@ export const IncidentsPage: React.FC = () => {
   const [dynamicCommunities, setDynamicCommunities] = useState<CommunityData[]>(
     [],
   );
-  const [placeSearchResults, setPlaceSearchResults] = useState<OsmPlaceResult[]>([]);
+  const [placeSearchResults, setPlaceSearchResults] = useState<
+    OsmPlaceResult[]
+  >([]);
 
   const countries = useMemo(() => getAllCountries(), []);
   const states = useMemo(
@@ -604,6 +609,7 @@ export const IncidentsPage: React.FC = () => {
 
   return (
     <div
+      className="incidents-page-outer"
       style={{
         padding: "1.5rem",
         display: "flex",
@@ -621,6 +627,7 @@ export const IncidentsPage: React.FC = () => {
           1. TOP METRIC STAT CARDS (Minimalist & Square)
           ========================================================= */}
       <div
+        className="incidents-stats-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
@@ -916,6 +923,7 @@ export const IncidentsPage: React.FC = () => {
           2. FILTER & LOCATION JURISDICTION TOOLBAR (Square & Clean)
           ========================================================= */}
       <div
+        className="incidents-filter-toolbar"
         style={{
           backgroundColor: "#FFFFFF",
           borderRadius: "8px",
@@ -931,6 +939,7 @@ export const IncidentsPage: React.FC = () => {
       >
         {/* Left: Category + Location Scope Hierarchy */}
         <div
+          className="incidents-filter-left"
           style={{
             display: "flex",
             alignItems: "center",
@@ -966,6 +975,7 @@ export const IncidentsPage: React.FC = () => {
           </div>
 
           <div
+            className="incidents-filter-divider"
             style={{ height: "18px", width: "1px", backgroundColor: "#E2E8F0" }}
           />
 
@@ -1086,7 +1096,10 @@ export const IncidentsPage: React.FC = () => {
         </div>
 
         {/* Right: Actions & Reports Count */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+        <div
+          className="incidents-filter-right"
+          style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}
+        >
           {/* AI Community Safety Intelligence Button */}
           <button
             onClick={handleOpenAiSummary}
@@ -1157,9 +1170,10 @@ export const IncidentsPage: React.FC = () => {
       </div>
 
       {/* =========================================================
-          3. SQUARE FULL-SPACE INCIDENTS TABLE
+          3. SQUARE FULL-SPACE INCIDENTS TABLE (Desktop)
           ========================================================= */}
       <div
+        className="incidents-table-wrapper"
         style={{
           backgroundColor: "#FFFFFF",
           borderRadius: "8px",
@@ -1643,6 +1657,216 @@ export const IncidentsPage: React.FC = () => {
               }}
               showSizeChanger
               pageSizeOptions={["10", "20", "50"]}
+              size="small"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* =========================================================
+          4. MOBILE CARD LIST (Visible on screens ≤ 768px)
+          ========================================================= */}
+      <div className="incidents-card-list">
+        {displayedReports.length === 0 ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "3.5rem 1.5rem",
+              color: "var(--text-muted)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <AlertTriangle size={24} color="#94A3B8" />
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: "0.875rem",
+                color: "#334155",
+              }}
+            >
+              No incident reports match your filter.
+            </span>
+          </div>
+        ) : (
+          paginatedReports.map((rep) => {
+            const isCritical =
+              rep.urgency === "critical" || rep.category === "emergency";
+
+            return (
+              <div
+                key={rep.id}
+                className="incident-mobile-card"
+                onClick={() => navigate(`/admin/incidents/${rep.id}`)}
+              >
+                {/* Header: Category & Status */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "0.75rem",
+                      color: isCritical ? "#DC2626" : "var(--primary)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {rep.category.replace("_", " ")}
+                  </span>
+
+                  {rep.status === "resolved" ? (
+                    <span
+                      style={{
+                        padding: "2px 7px",
+                        borderRadius: "4px",
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        backgroundColor: "#F0FDF4",
+                        color: "#16A34A",
+                        border: "1px solid #BBF7D0",
+                      }}
+                    >
+                      Resolved
+                    </span>
+                  ) : rep.status === "investigating" ? (
+                    <span
+                      style={{
+                        padding: "2px 7px",
+                        borderRadius: "4px",
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        backgroundColor: "#FFFBEB",
+                        color: "#D97706",
+                        border: "1px solid #FDE68A",
+                      }}
+                    >
+                      Investigating
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        padding: "2px 7px",
+                        borderRadius: "4px",
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        backgroundColor: isCritical ? "#FEF2F2" : "#EFF6FF",
+                        color: isCritical ? "#DC2626" : "#2563EB",
+                        border: `1px solid ${isCritical ? "#FECACA" : "#BFDBFE"}`,
+                      }}
+                    >
+                      Open
+                    </span>
+                  )}
+                </div>
+
+                {/* Title */}
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: "#0F172A",
+                    fontSize: "0.9rem",
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {rep.title}
+                </div>
+
+                {/* Description Preview */}
+                <div
+                  style={{
+                    fontSize: "0.76rem",
+                    color: "#64748B",
+                    lineHeight: 1.35,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {rep.description}
+                </div>
+
+                {/* Footer: Location & Time */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginTop: "4px",
+                    paddingTop: "6px",
+                    borderTop: "1px solid #F1F5F9",
+                    fontSize: "0.72rem",
+                    color: "#64748B",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      minWidth: 0,
+                      flex: 1,
+                      paddingRight: "8px",
+                    }}
+                  >
+                    <MapPin
+                      size={12}
+                      color="#15803D"
+                      style={{ flexShrink: 0 }}
+                    />
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {rep.addressName || "Location Not Specified"}
+                    </span>
+                  </div>
+
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "0.68rem",
+                    }}
+                  >
+                    {new Date(rep.createdAt).toLocaleDateString([], {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {/* Mobile Pagination */}
+        {displayedReports.length > 0 && (
+          <div
+            style={{
+              padding: "0.75rem",
+              display: "flex",
+              justifyContent: "center",
+              borderTop: "1px solid #E2E8F0",
+              backgroundColor: "#FFFFFF",
+            }}
+          >
+            <Pagination
+              current={currentPage}
+              pageSize={pageSize}
+              total={displayedReports.length}
+              onChange={(page) => setCurrentPage(page)}
+              simple
               size="small"
             />
           </div>

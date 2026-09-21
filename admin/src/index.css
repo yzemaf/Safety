@@ -485,12 +485,12 @@ html, body, #root {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(4px);
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 100000 !important;
   padding: 1rem;
 }
 
@@ -499,6 +499,13 @@ html, body, #root {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-hairline);
   box-shadow: var(--shadow-floating);
+  max-width: 95vw;
+  box-sizing: border-box;
+}
+
+.ant-modal-mask,
+.ant-modal-wrap {
+  z-index: 100000 !important;
 }
 
 /* Smooth Auto-Expanding Hover Sidebar */
@@ -932,6 +939,790 @@ html, body, #root {
   background: transparent !important;
   border: none !important;
 }
+
+/* =========================================================
+   RESPONSIVE / MOBILE STYLES
+   Breakpoints: tablet = 1024px, mobile = 768px, xs = 480px
+   ========================================================= */
+
+/* ---- Landing Page ---- */
+
+/* Hide center nav on tablet/mobile, show hamburger-less compact header */
+.landing-header-nav {
+  display: flex;
+}
+
+.landing-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Hero right visual panel */
+.landing-hero-visual {
+  display: flex;
+}
+
+/* Floating stat cards in hero */
+.landing-hero-stat-card-1,
+.landing-hero-stat-card-2,
+.landing-hero-stat-card-3 {
+  display: inline-flex;
+}
+
+/* Pillars vertical tab left column */
+.pillars-tab-column {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #E2E8F0;
+}
+
+/* Section 2-col headers */
+.section-header-2col {
+  display: grid;
+  grid-template-columns: minmax(auto, 580px) 1fr;
+  gap: 3rem;
+  align-items: flex-end;
+  margin-bottom: 3rem;
+}
+
+/* Footer 4-col */
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr;
+  gap: 3rem;
+  margin-bottom: 3.5rem;
+}
+
+/* ---- Admin Layout ---- */
+
+/* Mobile bottom nav bar — hidden on desktop */
+.mobile-bottom-nav {
+  display: none;
+}
+
+/* Admin header search bar */
+.admin-header-search {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  padding: 0 1.5rem;
+}
+
+/* =========================================================
+   TABLET  (≤ 1024px)
+   ========================================================= */
+@media (max-width: 1024px) {
+  /* Landing: shrink pillars left tab column */
+  .pillars-tab-column {
+    min-width: 260px;
+  }
+
+  /* Footer: 2x2 grid */
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+}
+
+/* =========================================================
+   MOBILE  (≤ 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+
+  /* ---- Landing Header ---- */
+  .landing-header-nav {
+    display: none;
+  }
+
+  .landing-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.45rem !important;
+  }
+
+  .landing-header-actions .btn-oneforma-ghost {
+    display: inline-flex !important;
+    padding: 6px 11px !important;
+    font-size: 0.72rem !important;
+    border-radius: var(--radius-pill) !important;
+  }
+
+  .landing-header-actions .btn-oneforma-primary {
+    padding: 6px 12px !important;
+    font-size: 0.72rem !important;
+    border-radius: var(--radius-pill) !important;
+  }
+
+  /* ---- Landing Hero (Full Width & Centered on Mobile) ---- */
+  .landing-hero-section {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: 1fr !important;
+    padding: 2.75rem 1.25rem 2.25rem !important;
+    text-align: center !important;
+    align-items: center !important;
+    gap: 2rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .landing-hero-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+  }
+
+  .hero-tag-pill {
+    margin-bottom: 1rem !important;
+    font-size: 0.7rem !important;
+    padding: 5px 12px !important;
+  }
+
+  .display-mega {
+    font-size: clamp(26px, 7.5vw, 36px) !important;
+    line-height: 1.18 !important;
+    margin-bottom: 1rem !important;
+    text-align: center !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  .lede {
+    font-size: 0.88rem !important;
+    line-height: 1.5 !important;
+    max-width: 100% !important;
+    margin: 0 auto 1.5rem !important;
+    text-align: center !important;
+    color: var(--text-sub) !important;
+  }
+
+  .hero-ctas-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 320px !important;
+    gap: 0.65rem !important;
+    align-items: stretch !important;
+    margin: 0 auto !important;
+  }
+
+  .hero-ctas-wrapper a {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 11px 18px !important;
+    font-size: 0.85rem !important;
+  }
+
+  .hero-subtext-specs {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.45rem !important;
+    align-items: center !important;
+    text-align: center !important;
+    margin-top: 1.25rem !important;
+    font-size: 0.72rem !important;
+  }
+
+  .landing-hero-visual {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 360px !important;
+    min-height: unset !important;
+    margin-top: 0.5rem !important;
+    justify-content: center !important;
+  }
+
+  .landing-hero-visual .animate-hero-float {
+    height: 320px !important;
+    max-width: 100% !important;
+    border-radius: 20px !important;
+  }
+
+  .landing-hero-stat-card-1,
+  .landing-hero-stat-card-2,
+  .landing-hero-stat-card-3 {
+    display: none;
+  }
+
+  /* ---- Section Headers (2-col → 1-col) ---- */
+  .section-header-2col {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .section-header-2col > div:last-child {
+    text-align: left !important;
+  }
+
+  .section-header-2col > div:last-child p {
+    margin-left: 0 !important;
+    max-width: none !important;
+  }
+
+  /* ---- Pillars Section ---- */
+  .pillars-body-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+
+  .pillars-tab-column {
+    border-right: none;
+    border-bottom: 1px solid #E2E8F0;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    gap: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .pillars-tab-column::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pillars-tab-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0.85rem 1rem !important;
+    border-bottom: none !important;
+    border-radius: 12px !important;
+    margin-bottom: 0 !important;
+  }
+
+  .pillars-tab-btn-label {
+    font-size: 0.8125rem !important;
+  }
+
+  .pillars-active-bar {
+    display: none !important;
+  }
+
+  .pillars-content-panel {
+    padding: 1.5rem 0 0 0 !important;
+  }
+
+  /* ---- Testimonials Section ---- */
+  .testimonials-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ---- Download Section ---- */
+  .download-outer-grid {
+    grid-template-columns: 1fr !important;
+    padding: 2.5rem 1.5rem !important;
+    border-radius: 24px !important;
+    gap: 2rem !important;
+  }
+
+  /* ---- Footer ---- */
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.75rem;
+    margin-bottom: 2.5rem;
+  }
+
+  /* ---- Login Page ---- */
+  .login-split-card {
+    grid-template-columns: 1fr !important;
+    min-height: unset !important;
+    border-radius: 24px !important;
+  }
+
+  .login-brand-panel {
+    display: none !important;
+  }
+
+  .login-form-panel {
+    padding: 2.5rem 1.75rem !important;
+  }
+
+  /* ---- Admin Layout: Hide sidebar, show bottom nav ---- */
+  .app-sidebar {
+    display: none !important;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background-color: #FFFFFF;
+    border-top: 1px solid var(--border-hairline);
+    z-index: 9999 !important;
+    align-items: stretch;
+    box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justifyContent: center;
+    gap: 2px;
+    padding: 2px 0;
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 0.55rem;
+    font-weight: 700;
+    font-family: var(--font-sans);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    transition: color 0.15s ease, background-color 0.15s ease;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .mobile-bottom-nav-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .mobile-bottom-nav-item.active {
+    color: var(--accent-green-dark);
+    background-color: var(--accent-green-light);
+  }
+
+  /* Admin main content: add bottom padding to avoid overlap with nav bar */
+  .admin-main-canvas {
+    padding-bottom: 48px !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  /* Admin header: hide search, compress title */
+  .admin-header-search {
+    display: none;
+  }
+
+  .admin-header-right-spacer {
+    display: none !important;
+  }
+
+  .admin-header-bar {
+    padding: 0 1rem !important;
+    justify-content: space-between;
+  }
+
+  .admin-header-title h1 {
+    font-size: 1rem !important;
+  }
+
+  .admin-header-title p {
+    display: none;
+  }
+
+  /* Admin header logout button (shown on mobile since sidebar is gone) */
+  .admin-mobile-logout {
+    display: flex !important;
+  }
+}
+
+/* =========================================================
+   EXTRA SMALL  (≤ 480px)
+   ========================================================= */
+@media (max-width: 480px) {
+  /* Landing: reduce section paddings */
+  .landing-hero-section {
+    padding: 2.25rem 1rem 2rem !important;
+  }
+
+  .landing-section-pad {
+    padding-left: 1.25rem !important;
+    padding-right: 1.25rem !important;
+  }
+
+  /* Hero headline */
+  .display-mega {
+    font-size: clamp(24px, 7.5vw, 32px) !important;
+  }
+
+  .display-xl {
+    font-size: clamp(24px, 6.5vw, 32px) !important;
+  }
+
+  /* Footer: single column */
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  /* Landing header: tighter padding */
+  .landing-header-bar {
+    padding: 0.65rem 1rem !important;
+  }
+
+  /* Pillars section padding */
+  .pillars-section-outer {
+    padding: 3rem 1rem !important;
+  }
+
+  /* Download section */
+  .download-section-outer {
+    padding: 3rem 1rem !important;
+  }
+
+  /* Login form panel */
+  .login-form-panel {
+    padding: 2rem 1.25rem !important;
+  }
+
+  .mobile-bottom-nav {
+    height: 48px !important;
+  }
+
+  .admin-main-canvas {
+    padding-bottom: 48px !important;
+  }
+}
+
+/* =========================================================
+   ADMIN INNER PAGES — RADAR, INCIDENTS, STAFF
+   ========================================================= */
+
+/* ---- Radar Page: LiveRadarMap ---- */
+
+/* Outer wrapper of the Radar 3-panel layout */
+.radar-outer-wrapper {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  padding: 1.25rem 1.75rem;
+  gap: 1.25rem;
+  background-color: var(--bg-app);
+  overflow: hidden;
+}
+
+/* Incidents Page: filter toolbar wraps neatly */
+.incidents-filter-toolbar {
+  background-color: #FFFFFF;
+  border-radius: 8px;
+  border: 1px solid #E2E8F0;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+/* Staff toolbar */
+.staff-filter-toolbar {
+  background-color: #FFFFFF;
+  border-radius: 20px;
+  border: 1.5px solid #E2E8F0;
+  padding: 1.1rem 1.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+}
+
+/* ---- Staff Table: desktop shows full table ---- */
+.staff-table-wrapper {
+  display: block;
+}
+.staff-card-list {
+  display: none;
+}
+
+/* ---- Incidents Table: desktop shows full table ---- */
+.incidents-table-wrapper {
+  display: block;
+}
+.incidents-card-list {
+  display: none;
+}
+
+/* =========================================================
+   MOBILE — ADMIN INNER PAGES  (≤ 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+
+  /* ---- Radar Map: Stack panels vertically ---- */
+  .radar-outer-wrapper {
+    flex-direction: column !important;
+    padding: 0.5rem !important;
+    gap: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  /* Left dispatch queue: collapsed by default on mobile, becomes a slide-up sheet */
+  .radar-left-panel {
+    /* Hidden on mobile — user can show via toggle */
+    display: none !important;
+  }
+
+  /* Center map: full height */
+  .radar-map-center {
+    flex: 1 !important;
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  /* Right inspector panel: slide up from bottom as a fixed overlay above 48px bottom nav and over map */
+  .radar-right-panel {
+    position: fixed !important;
+    bottom: 48px !important; /* docked directly above bottom nav */
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-height: 60vh !important;
+    overflow-y: auto !important;
+    border-radius: 20px 20px 0 0 !important;
+    box-shadow: 0 -10px 40px rgba(15, 23, 42, 0.28) !important;
+    z-index: 10001 !important; /* elevated above all map layers and controls */
+    border-left: none !important;
+    border-top: 1px solid var(--border-hairline) !important;
+    margin-left: 0 !important;
+    transform: none !important;
+    background-color: #FFFFFF !important;
+  }
+
+  .radar-right-panel[style*="width: 0px"],
+  .radar-right-panel[style*="opacity: 0"] {
+    display: none !important;
+  }
+
+  .radar-right-panel > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 20px 20px 0 0 !important;
+    border: none !important;
+  }
+
+  /* Radar floating jurisdiction bar: full-width, scrollable */
+  .radar-jurisdiction-bar {
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    top: 0.5rem !important;
+    width: auto !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  .radar-jurisdiction-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Floating zoom buttons: move above bottom nav */
+  .radar-zoom-controls {
+    bottom: 56px !important;
+    right: 0.5rem !important;
+  }
+
+  /* ---- Incidents Page ---- */
+
+  /* Outer wrapper: tighten padding */
+  .incidents-page-outer {
+    padding: 0.85rem !important;
+    gap: 0.85rem !important;
+  }
+
+  /* Stat cards: 2 per row */
+  .incidents-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.65rem !important;
+  }
+
+  /* Filter toolbar: stack filters vertically */
+  .incidents-filter-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.85rem;
+    gap: 0.65rem;
+  }
+
+  .incidents-filter-left {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    align-items: center;
+  }
+
+  .incidents-filter-left > div {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.2rem !important;
+  }
+
+  /* Hide the divider on mobile */
+  .incidents-filter-divider {
+    display: none !important;
+  }
+
+  /* Dropdowns: full width in mobile grid */
+  .incidents-filter-left .ant-select {
+    width: 100% !important;
+  }
+
+  .incidents-filter-right {
+    width: 100%;
+    justify-content: space-between !important;
+  }
+
+  /* Hide the full table, show card list */
+  .incidents-table-wrapper {
+    display: none;
+  }
+
+  .incidents-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    border: 1px solid #E2E8F0;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+    min-height: 420px;
+  }
+
+  .incident-mobile-card {
+    padding: 1rem;
+    border-bottom: 1px solid #F1F5F9;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .incident-mobile-card:last-child {
+    border-bottom: none;
+  }
+
+  .incident-mobile-card:active {
+    background-color: var(--bg-hover);
+  }
+
+  /* ---- Staff Page ---- */
+
+  /* Outer wrapper: tighten padding */
+  .staff-page-outer {
+    padding: 0.85rem !important;
+    gap: 0.85rem !important;
+  }
+
+  /* Stat cards: 2 per row */
+  .staff-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.65rem !important;
+  }
+
+  /* Staff toolbar: column stack */
+  .staff-filter-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.85rem;
+  }
+
+  .staff-filter-toolbar > div:first-child {
+    width: 100%;
+  }
+
+  .staff-filter-toolbar .ant-select {
+    width: 100% !important;
+  }
+
+  .staff-filter-toolbar > button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Hide the full table, show card list */
+  .staff-table-wrapper {
+    display: none;
+  }
+
+  .staff-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background-color: #FFFFFF;
+    border-radius: 24px;
+    border: 1.5px solid #E2E8F0;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
+  }
+
+  .staff-mobile-card {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #EDF2F7;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .staff-mobile-card:last-child {
+    border-bottom: none;
+  }
+
+  /* ---- Report Detail Page ---- */
+  .report-detail-outer {
+    padding: 0.85rem !important;
+  }
+
+  .report-detail-card {
+    padding: 1.25rem !important;
+    border-radius: 16px !important;
+    gap: 1.25rem !important;
+  }
+
+  .report-detail-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.25rem !important;
+  }
+}
+
+/* =========================================================
+   EXTRA SMALL  (≤ 480px) — Admin inner pages
+   ========================================================= */
+@media (max-width: 480px) {
+  .incidents-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .staff-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .incidents-filter-left {
+    grid-template-columns: 1fr !important;
+  }
+
+  .radar-right-panel {
+    max-height: 60vh !important;
+  }
+
+  .report-detail-card {
+    padding: 1rem !important;
+    border-radius: 12px !important;
+  }
+}
+
 
 
 

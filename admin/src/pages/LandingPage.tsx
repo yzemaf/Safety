@@ -168,6 +168,7 @@ export const LandingPage: React.FC = () => {
           1. STICKY GLASS HEADER (Clean & Minimal)
           ========================================================= */}
       <header
+        className="landing-header-bar"
         style={{
           position: "sticky",
           top: 0,
@@ -222,7 +223,10 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* Center Nav Links */}
-        <nav style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
+        <nav
+          className="landing-header-nav"
+          style={{ alignItems: "center", gap: "2rem" }}
+        >
           <a
             href="#features"
             style={{
@@ -262,7 +266,7 @@ export const LandingPage: React.FC = () => {
         </nav>
 
         {/* Top Right Header Action */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div className="landing-header-actions" style={{ gap: "0.75rem" }}>
           <Link
             to="/login"
             className="btn-oneforma-ghost"
@@ -295,6 +299,7 @@ export const LandingPage: React.FC = () => {
           2. MEGA HERO SECTION (Customer Focused)
           ========================================================= */}
       <section
+        className="landing-hero-section"
         style={{
           padding: "5rem 2rem 3.5rem 2rem",
           maxWidth: "1240px",
@@ -308,9 +313,10 @@ export const LandingPage: React.FC = () => {
         }}
       >
         {/* Left: Pitch & Value Proposition */}
-        <div>
+        <div className="landing-hero-content">
           {/* Tag Pill */}
           <div
+            className="hero-tag-pill"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -349,6 +355,7 @@ export const LandingPage: React.FC = () => {
 
           {/* Dual CTAs */}
           <div
+            className="hero-ctas-wrapper"
             style={{
               display: "flex",
               gap: "1rem",
@@ -374,6 +381,7 @@ export const LandingPage: React.FC = () => {
 
           {/* Subtext specs */}
           <div
+            className="hero-subtext-specs"
             style={{
               display: "flex",
               gap: "1.5rem",
@@ -399,9 +407,9 @@ export const LandingPage: React.FC = () => {
 
         {/* Right: Modern Visual Canvas with Live Simulation */}
         <div
+          className="landing-hero-visual"
           style={{
             position: "relative",
-            display: "flex",
             alignItems: "center",
             justifyContent: "center",
             minHeight: "440px",
@@ -615,7 +623,7 @@ export const LandingPage: React.FC = () => {
 
           {/* Floating Glass Stat Card 1 */}
           <div
-            className="glass-stat-card"
+            className="glass-stat-card landing-hero-stat-card-1"
             style={{
               position: "absolute",
               top: "-20px",
@@ -630,7 +638,7 @@ export const LandingPage: React.FC = () => {
 
           {/* Floating Glass Stat Card 2 */}
           <div
-            className="glass-stat-card"
+            className="glass-stat-card landing-hero-stat-card-2"
             style={{
               position: "absolute",
               bottom: "-15px",
@@ -645,7 +653,7 @@ export const LandingPage: React.FC = () => {
 
           {/* Floating Glass Stat Card 3 */}
           <div
-            className="glass-stat-card"
+            className="glass-stat-card landing-hero-stat-card-3"
             style={{
               position: "absolute",
               bottom: "40px",
@@ -674,15 +682,7 @@ export const LandingPage: React.FC = () => {
         }}
       >
         {/* Section Header */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(auto, 580px) 1fr",
-            gap: "3rem",
-            alignItems: "flex-end",
-            marginBottom: "3rem",
-          }}
-        >
+        <div className="section-header-2col">
           <div>
             <div
               style={{
@@ -719,6 +719,7 @@ export const LandingPage: React.FC = () => {
 
         {/* Testimonials Grid */}
         <div
+          className="testimonials-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
@@ -814,6 +815,7 @@ export const LandingPage: React.FC = () => {
           ========================================================= */}
       <section
         id="features"
+        className="pillars-section-outer"
         style={{
           backgroundColor: "#FFFFFF",
           borderTop: "1px solid #E2E8F0",
@@ -825,13 +827,8 @@ export const LandingPage: React.FC = () => {
         <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
           {/* Section Header */}
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(auto, 580px) 1fr",
-              gap: "4rem",
-              alignItems: "flex-end",
-              marginBottom: "3.5rem",
-            }}
+            className="section-header-2col"
+            style={{ gap: "4rem", marginBottom: "3.5rem" }}
           >
             <div>
               <div
@@ -886,6 +883,7 @@ export const LandingPage: React.FC = () => {
 
           {/* Two-Column Interactive Tab Body */}
           <div
+            className="pillars-body-grid"
             style={{
               display: "grid",
               gridTemplateColumns: "360px 1fr",
@@ -896,12 +894,12 @@ export const LandingPage: React.FC = () => {
           >
             {/* Left Column: Vertical Tabs (Hovering pauses autoplay) */}
             <div
+              className="pillars-tab-column"
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
               style={{
                 display: "flex",
                 flexDirection: "column",
-                borderRight: "1px solid #E2E8F0",
               }}
             >
               {pillars.map((pillar, idx) => {
@@ -913,6 +911,7 @@ export const LandingPage: React.FC = () => {
                     key={idx}
                     type="button"
                     onClick={() => handleTabChange(idx)}
+                    className="pillars-tab-btn"
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -962,6 +961,7 @@ export const LandingPage: React.FC = () => {
                         <Icon size={20} />
                       </div>
                       <div
+                        className="pillars-tab-btn-label"
                         style={{
                           fontFamily: "var(--font-display)",
                           fontSize: "1.05rem",
@@ -980,6 +980,7 @@ export const LandingPage: React.FC = () => {
                     {/* Animated Active Indicator Progress Bar on Right Edge */}
                     {isActive && (
                       <div
+                        className="pillars-active-bar"
                         style={{
                           position: "absolute",
                           right: "-2px",
@@ -1013,6 +1014,7 @@ export const LandingPage: React.FC = () => {
 
             {/* Right Column: Dynamic Preview Panel (Smooth 2-Phase Cross-Fade) */}
             <div
+              className="pillars-content-panel"
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
               style={{
@@ -1166,6 +1168,7 @@ export const LandingPage: React.FC = () => {
           ========================================================= */}
       <section
         id="download"
+        className="download-section-outer landing-section-pad"
         style={{
           backgroundColor: "#FFFFFF",
           borderTop: "1px solid #E2E8F0",
@@ -1174,6 +1177,7 @@ export const LandingPage: React.FC = () => {
         }}
       >
         <div
+          className="download-outer-grid"
           style={{
             maxWidth: "1080px",
             margin: "0 auto",
@@ -1280,6 +1284,7 @@ export const LandingPage: React.FC = () => {
           6. STRUCTURED FOOTER (Clean & Focused)
           ========================================================= */}
       <footer
+        className="landing-section-pad"
         style={{
           backgroundColor: "#FFFFFF",
           borderTop: "1px solid #E2E8F0",
@@ -1288,14 +1293,7 @@ export const LandingPage: React.FC = () => {
         }}
       >
         <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.5fr 1fr 1fr 1fr",
-              gap: "3rem",
-              marginBottom: "3.5rem",
-            }}
-          >
+          <div className="footer-grid">
             {/* Column 1: Brand & Status */}
             <div>
               <div

@@ -1,3 +1,5 @@
+# OSF x Andela Hackathon
+
 # Safety — Proactive Protection & Threat Radar
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -9,6 +11,7 @@
 [![Gemini](https://img.shields.io/badge/Google-Gemini%20AI-8E75C2?logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![Leaflet](https://img.shields.io/badge/Leaflet-1.9.4-199900?logo=leaflet&logoColor=white)](https://leafletjs.com)
 [![OpenStreetMap](https://img.shields.io/badge/OpenStreetMap-Default%20Map-7EBC6F?logo=openstreetmap&logoColor=white)](https://www.openstreetmap.org)
+
 
 **Safety** is an end-to-end personal protection, community threat awareness, and emergency dispatch platform built for the **Safety, Reporting & Protection** hackathon challenge.
 
