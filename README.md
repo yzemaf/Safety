@@ -7,6 +7,8 @@
 [![Firebase](https://img.shields.io/badge/Firebase-Realtime%20%26%20FCM-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com)
 [![Agora](https://img.shields.io/badge/Agora-WebRTC%20Audio-099DFD?logo=agora&logoColor=white)](https://www.agora.io)
 [![Gemini](https://img.shields.io/badge/Google-Gemini%20AI-8E75C2?logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
+[![Leaflet](https://img.shields.io/badge/Leaflet-1.9.4-199900?logo=leaflet&logoColor=white)](https://leafletjs.com)
+[![OpenStreetMap](https://img.shields.io/badge/OpenStreetMap-Default%20Map-7EBC6F?logo=openstreetmap&logoColor=white)](https://www.openstreetmap.org)
 
 **Safety** is an end-to-end personal protection, community threat awareness, and emergency dispatch platform built for the **Safety, Reporting & Protection** hackathon challenge.
 
@@ -56,16 +58,40 @@ Additionally, community threat reporting often suffers from lack of anonymity, s
 * **Tamper-Proof Safety PIN**: Canceling an emergency requires entering a verified 4-digit Safety PIN, preventing an attacker from canceling a distress beacon.
 
 ### 2. Community Awareness & Threat Radar
-* **Anonymous / Verified Incident Reporting**: Citizens can report harassment, theft, physical threats, or hazards with automatic GPS reverse geocoding.
+* **Anonymous / Verified Incident Reporting**: Citizens can report harassment, theft, physical threats, or hazards with automatic GPS reverse geocoding via OpenStreetMap Nominatim.
 * **Real-Time Neighborhood Risk Score**: Computes a local threat level (**Safe**, **Moderate**, **Caution**, **Severe**) based on nearby report density.
 * **Google Gemini AI Threat Intelligence**: The backend analyzes incident clusters and active sessions within a geographical bounding area to generate structured safety briefings and threat assessments for dispatchers.
 * **FCM Proximity Alerts**: High-urgency distress beacons trigger push notifications to nearby citizens within the community perimeter.
 
 ### 3. Admin Emergency Command & Response Center
-* **Live Radar Map**: Real-time Google Maps canvas with dark/silver styling displaying active walks (emerald pulsing pins) and distress alerts (crimson wave pins).
+* **Live Radar Map**: Real-time **Leaflet + OpenStreetMap** canvas (default, zero API key required) displaying active walks (emerald pulsing pins) and distress alerts (crimson wave pins). Google Maps is available as an optional alternative engine switchable via a single constant.
 * **Instant In-Browser Agora Voice Calling**: Responders can initiate two-way WebRTC voice calls to the victim's phone directly through the browser.
-* **Turn-by-Turn Navigation**: 1-click Google Maps routing from the dispatcher's location or station to the citizen's exact coordinates.
-* **Multi-Jurisdiction Scoping**: Hierarchical filtering across countries, states/regions, and specific neighborhood communities.
+* **Turn-by-Turn Navigation**: 1-click routing from the dispatcher's location or station to the citizen's exact coordinates.
+* **Multi-Jurisdiction Scoping**: Hierarchical filtering across countries, states/regions, and specific neighborhood communities powered by OSM Nominatim boundary resolution.
+
+---
+
+## 🗺️ Map Engine
+
+The platform ships with a **dual map engine** architecture. The active engine is controlled by a single constant in [`LiveRadarMap.tsx`](file:///c:/Users/DELL/Safety/admin/src/components/LiveRadarMap.tsx) for the web portal and a `MapEngine` enum in [`awareness_radar_screen.dart`](file:///c:/Users/DELL/Safety/mobile/lib/screens/awareness_radar_screen.dart) for mobile:
+
+```typescript
+// admin/src/components/LiveRadarMap.tsx
+// Set to 'osm' for OpenStreetMap/Leaflet (default — zero API keys required)
+// Set to 'googlemaps' to use the Google Maps JavaScript API
+export const ACTIVE_MAP_ENGINE: MapEngineMode = 'osm';
+```
+
+| Feature | OpenStreetMap / Leaflet (Default ✅) | Google Maps (Optional) |
+|---|---|---|
+| **API Key Required** | ❌ None | ✅ `VITE_GOOGLE_MAPS_API_KEY` |
+| **Tile Source** | OpenStreetMap tile servers | Google Maps tile infrastructure |
+| **Community Search** | OSM Nominatim (free) | Google Places Autocomplete |
+| **Boundary Polygons** | OSM Nominatim GeoJSON | Google Geocoding API |
+| **Map Animations** | Leaflet `flyTo()` | Custom cubic-bezier RAF engine |
+| **Cost** | Free & open-source | Pay-per-use billing |
+
+The **mobile Flutter app** (Community Radar screen) mirrors this pattern — `flutter_map` with OpenStreetMap tiles is the default active engine (`MapEngine.openStreetMap`), with `google_maps_flutter` available as an opt-in alternative.
 
 ---
 
@@ -93,9 +119,9 @@ Safety/
 │
 ├── admin/           # React 19 + Vite + TypeScript Web Dispatch Portal
 │   ├── src/
-│   │   ├── components/  # LiveRadarMap, EmergencyCallModal, AiSummaryModal, CountryFlag
+│   │   ├── components/  # LiveRadarMap (Leaflet/OSM default + Google Maps fallback), EmergencyCallModal, AiSummaryModal, CountryFlag
 │   │   ├── pages/       # LandingPage, LoginPage, RadarPage, IncidentsPage, StaffPage
-│   │   └── services/    # ApiService, AgoraService, FirebaseService, BoundaryService
+│   │   └── services/    # ApiService, AgoraService, FirebaseService, BoundaryService, OsmLocationService
 │   └── package.json
 │
 ├── TECHNICAL_SPEC.md # Full architectural blueprint, schemas, and API documentation
@@ -113,6 +139,7 @@ Safety/
 * **Firebase Project** with Cloud Firestore & Cloud Messaging enabled
 * **Agora.io Developer Account** (App ID & Certificate for voice calling)
 * **Google Gemini API Key** (for AI intelligence summaries)
+* ~~Google Maps API Key~~ — **No longer required** for the default OSM/Leaflet map engine (optional if switching to Google Maps engine)
 
 ---
 
@@ -140,7 +167,9 @@ npm install
 
 # Configure environment variables
 cp .env.example .env
-# Edit .env with your backend API URL, Google Maps Key, Agora App ID, and Firebase Web Config
+# Edit .env with your backend API URL, Agora App ID, and Firebase Web Config
+# Note: VITE_GOOGLE_MAPS_API_KEY is optional — the default map engine is OpenStreetMap/Leaflet (no key needed)
+# Only set it if you switch ACTIVE_MAP_ENGINE to 'googlemaps' in LiveRadarMap.tsx
 
 # Start Vite dev server on http://localhost:5173
 npm run dev
@@ -158,9 +187,11 @@ cd mobile
 
 # Configure mobile environment variables (copy from template)
 cp lib/config/env.example.dart lib/config/env.dart
-# Edit lib/config/env.dart with your Agora App ID, Google Maps Key, and Backend URL
+# Edit lib/config/env.dart with your Agora App ID and Backend URL
+# Note: googleMapsApiKey is only needed if you switch _activeEngine to MapEngine.googleMaps
+# in awareness_radar_screen.dart. The default is MapEngine.openStreetMap (no key required).
 
-# (Optional for Android builds) Add MAPS_API_KEY to android/local.properties:
+# (Optional, only if using Google Maps engine) Add MAPS_API_KEY to android/local.properties:
 # MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 
 # Install Flutter dependencies
@@ -183,4 +214,4 @@ Refer to the service templates for full details:
 
 ## 📖 Deep-Dive Architecture Documentation
 
-For complete data models, state transition diagrams, WebRTC audio pipelines, OpenStreetMap polygon smoothing algorithms, and API specifications, see **[`TECHNICAL_SPEC.md`](file:///c:/Users/DELL/Safety/TECHNICAL_SPEC.md)**.
+For complete data models, state transition diagrams, WebRTC audio pipelines, Leaflet/OpenStreetMap dual-engine architecture details, OSM Nominatim boundary polygon algorithms, and API specifications, see **[`TECHNICAL_SPEC.md`](file:///c:/Users/DELL/Safety/TECHNICAL_SPEC.md)**.

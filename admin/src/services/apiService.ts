@@ -8,7 +8,7 @@ import type {
   CommunityAiReport
 } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://safetyyzemaf-ejfyeqb7b2d4a4e5.westus3-01.azurewebsites.net/api';
 const TOKEN_KEY = 'safety_admin_token';
 const USER_KEY = 'safety_admin_user';
 

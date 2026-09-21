@@ -913,4 +913,25 @@ html, body, #root {
   animation: pillarProgressBar 5s linear forwards;
 }
 
+/* =========================================================
+   OpenStreetMap Minimalist Light Silver / Whitish & Gray Styling
+   ========================================================= */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background-color: #F7F8FA !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* Transforms colorful OSM tiles into a light pastel whitish-silver canvas */
+.osm-silver-tiles {
+  filter: grayscale(100%) brightness(108%) contrast(86%) opacity(0.92);
+}
+
+.leaflet-custom-radar-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+
 

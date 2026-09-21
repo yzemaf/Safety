@@ -26,20 +26,21 @@ class LocationSearchResult {
   });
 
   Map<String, dynamic> toJson() => {
-    'title': title,
-    'subtitle': subtitle,
-    'lat': lat,
-    'lng': lng,
-    'placeId': placeId,
-  };
+        'title': title,
+        'subtitle': subtitle,
+        'lat': lat,
+        'lng': lng,
+        'placeId': placeId,
+      };
 
-  factory LocationSearchResult.fromJson(Map<String, dynamic> json) => LocationSearchResult(
-    title: json['title'] as String? ?? 'Location',
-    subtitle: json['subtitle'] as String? ?? '',
-    lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
-    lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
-    placeId: json['placeId'] as String?,
-  );
+  factory LocationSearchResult.fromJson(Map<String, dynamic> json) =>
+      LocationSearchResult(
+        title: json['title'] as String? ?? 'Location',
+        subtitle: json['subtitle'] as String? ?? '',
+        lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
+        lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
+        placeId: json['placeId'] as String?,
+      );
 }
 
 class LocationPickerSheet extends StatefulWidget {
@@ -90,7 +91,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
 
   void _loadRecents() {
     final raw = StorageService.loadRecentLocationsRaw();
-    _recentLocations = raw.map((m) => LocationSearchResult.fromJson(m)).toList();
+    _recentLocations =
+        raw.map((m) => LocationSearchResult.fromJson(m)).toList();
     _searchResults = List.from(_recentLocations);
   }
 
@@ -138,17 +140,115 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
     });
 
     if (query.trim().length >= 2) {
-      _debounceTimer = Timer(const Duration(milliseconds: 600), () {
+      _debounceTimer = Timer(const Duration(milliseconds: 400), () {
         if (mounted && _searchCtrl.text.trim() == query.trim()) {
-          _searchGoogleMapsPlaces(query.trim());
+          _searchPlaces(query.trim());
         }
       });
     }
   }
 
-  Future<void> _searchGoogleMapsPlaces(String query) async {
+  Future<void> _searchPlaces(String query) async {
     setState(() => _isLoading = true);
+    final userLoc = widget.locationService.currentLocation;
+
+    try {
+      // Bias search results to user's current country/region (~400km radius viewbox)
+      final left = userLoc.lng - 4.0;
+      final right = userLoc.lng + 4.0;
+      final top = userLoc.lat + 4.0;
+      final bottom = userLoc.lat - 4.0;
+      final viewboxParam = '$left,$top,$right,$bottom';
+
+      final osmUri = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=jsonv2&addressdetails=1&limit=12&viewbox=$viewboxParam&bounded=0',
+      );
+
+      final response = await http.get(
+        osmUri,
+        headers: {
+          'User-Agent': 'Safety-Mobile-App/1.0 (com.yzemaf.safety.safety_app)',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        if (data.isNotEmpty) {
+          final List<LocationSearchResult> osmResults = [];
+
+          for (final item in data) {
+            final lat = double.tryParse(item['lat']?.toString() ?? '') ?? 0.0;
+            final lng = double.tryParse(item['lon']?.toString() ?? '') ?? 0.0;
+            if (lat == 0.0 && lng == 0.0) continue;
+
+            final displayName = (item['display_name'] as String? ?? '').trim();
+            final name = (item['name'] as String? ?? '').trim();
+            final addr = (item['address'] as Map<String, dynamic>?) ?? {};
+
+            String title = name.isNotEmpty
+                ? name
+                : (addr['road'] ??
+                        addr['suburb'] ??
+                        addr['city'] ??
+                        displayName.split(',').first)
+                    .toString()
+                    .trim();
+
+            final parts = displayName
+                .split(',')
+                .map((p) => p.trim())
+                .where((p) => p != title)
+                .toList();
+            String subtitle = parts.take(3).join(', ');
+            if (subtitle.isEmpty) subtitle = displayName;
+
+            osmResults.add(
+              LocationSearchResult(
+                title: title,
+                subtitle: subtitle,
+                lat: lat,
+                lng: lng,
+              ),
+            );
+          }
+
+          // Sort results by proximity to user so local in-country results appear first
+          if (userLoc.lat != 0.0 && userLoc.lng != 0.0) {
+            osmResults.sort((a, b) {
+              final distA = userLoc.distanceTo(LocationPoint(lat: a.lat, lng: a.lng));
+              final distB = userLoc.distanceTo(LocationPoint(lat: b.lat, lng: b.lng));
+              return distA.compareTo(distB);
+            });
+          }
+
+          if (mounted &&
+              _searchCtrl.text.trim() == query &&
+              osmResults.isNotEmpty) {
+            setState(() {
+              _searchResults = [
+                ...osmResults,
+                ..._recentLocations
+                    .where((d) => !osmResults.any((g) => g.title == d.title)),
+              ];
+            });
+            return;
+          }
+        }
+      }
+
+      // Fallback to Google Maps Places API if configured
+      await _searchGoogleMapsPlaces(query);
+    } catch (_) {
+      await _searchGoogleMapsPlaces(query);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _searchGoogleMapsPlaces(String query) async {
     const apiKey = AppConstants.googleMapsApiKey;
+    if (apiKey.isEmpty || apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') return;
     final userLoc = widget.locationService.currentLocation;
 
     try {
@@ -156,7 +256,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
         'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(query)}&location=${userLoc.lat},${userLoc.lng}&radius=50000&key=$apiKey',
       );
 
-      final response = await http.get(autocompleteUri).timeout(const Duration(seconds: 4));
+      final response =
+          await http.get(autocompleteUri).timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         final status = data['status'];
@@ -166,8 +267,13 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
           final List<LocationSearchResult> googleResults = [];
 
           for (final item in predictions.take(8)) {
-            final mainText = item['structured_formatting']?['main_text'] ?? item['description'] ?? 'Location';
-            final secondaryText = item['structured_formatting']?['secondary_text'] ?? item['description'] ?? '';
+            final mainText = item['structured_formatting']?['main_text'] ??
+                item['description'] ??
+                'Location';
+            final secondaryText = item['structured_formatting']
+                    ?['secondary_text'] ??
+                item['description'] ??
+                '';
             final placeId = item['place_id'] as String?;
 
             googleResults.add(
@@ -185,19 +291,18 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
             setState(() {
               _searchResults = [
                 ...googleResults,
-                ..._recentLocations.where((d) => !googleResults.any((g) => g.title == d.title)),
+                ..._recentLocations.where(
+                    (d) => !googleResults.any((g) => g.title == d.title)),
               ];
             });
+            return;
           }
-          return;
         }
       }
 
       await _searchGoogleGeocoding(query, apiKey);
     } catch (_) {
       await _searchGoogleGeocoding(query, apiKey);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -206,7 +311,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       final geocodeUri = Uri.parse(
         'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(query)}&key=$apiKey',
       );
-      final response = await http.get(geocodeUri).timeout(const Duration(seconds: 4));
+      final response =
+          await http.get(geocodeUri).timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         if (data['status'] == 'OK' && data['results'] != null) {
@@ -214,12 +320,17 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
           final List<LocationSearchResult> geocodeResults = [];
 
           for (final res in results.take(6)) {
-            final formattedAddress = res['formatted_address'] as String? ?? 'Location';
+            final formattedAddress =
+                res['formatted_address'] as String? ?? 'Location';
             final parts = formattedAddress.split(',');
             final mainTitle = parts.first.trim();
             final secondary = parts.skip(1).join(',').trim();
-            final lat = (res['geometry']?['location']?['lat'] as num?)?.toDouble() ?? 0.0;
-            final lng = (res['geometry']?['location']?['lng'] as num?)?.toDouble() ?? 0.0;
+            final lat =
+                (res['geometry']?['location']?['lat'] as num?)?.toDouble() ??
+                    0.0;
+            final lng =
+                (res['geometry']?['location']?['lng'] as num?)?.toDouble() ??
+                    0.0;
 
             if (lat != 0.0 && lng != 0.0) {
               geocodeResults.add(
@@ -233,11 +344,14 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
             }
           }
 
-          if (mounted && _searchCtrl.text.trim() == query && geocodeResults.isNotEmpty) {
+          if (mounted &&
+              _searchCtrl.text.trim() == query &&
+              geocodeResults.isNotEmpty) {
             setState(() {
               _searchResults = [
                 ...geocodeResults,
-                ..._recentLocations.where((d) => !geocodeResults.any((g) => g.title == d.title)),
+                ..._recentLocations.where(
+                    (d) => !geocodeResults.any((g) => g.title == d.title)),
               ];
             });
           }
@@ -246,7 +360,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
     } catch (_) {}
   }
 
-  Future<LocationPoint?> _resolvePlaceCoordinates(LocationSearchResult item) async {
+  Future<LocationPoint?> _resolvePlaceCoordinates(
+      LocationSearchResult item) async {
     if (item.lat != 0.0 && item.lng != 0.0) {
       return LocationPoint(lat: item.lat, lng: item.lng);
     }
@@ -257,7 +372,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
         final detailsUri = Uri.parse(
           'https://maps.googleapis.com/maps/api/place/details/json?place_id=${item.placeId}&fields=geometry,name,formatted_address&key=$apiKey',
         );
-        final res = await http.get(detailsUri).timeout(const Duration(seconds: 4));
+        final res =
+            await http.get(detailsUri).timeout(const Duration(seconds: 4));
         if (res.statusCode == 200) {
           final Map<String, dynamic> data = jsonDecode(res.body);
           final loc = data['result']?['geometry']?['location'];
@@ -275,7 +391,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       final geocodeUri = Uri.parse(
         'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent('${item.title}, ${item.subtitle}')}&key=$apiKey',
       );
-      final res = await http.get(geocodeUri).timeout(const Duration(seconds: 4));
+      final res =
+          await http.get(geocodeUri).timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(res.body);
         final loc = data['results']?[0]?['geometry']?['location'];
@@ -305,13 +422,16 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       );
 
       _recentLocations.removeWhere(
-        (x) => x.title == item.title || (x.lat == resolvedPoint.lat && x.lng == resolvedPoint.lng),
+        (x) =>
+            x.title == item.title ||
+            (x.lat == resolvedPoint.lat && x.lng == resolvedPoint.lng),
       );
       _recentLocations.insert(0, savedItem);
       if (_recentLocations.length > 8) {
         _recentLocations.removeRange(8, _recentLocations.length);
       }
-      await StorageService.saveRecentLocationsRaw(_recentLocations.map((e) => e.toJson()).toList());
+      await StorageService.saveRecentLocationsRaw(
+          _recentLocations.map((e) => e.toJson()).toList());
 
       widget.locationService.setLocation(resolvedPoint);
       widget.onLocationSelected(resolvedPoint, item.title);
@@ -320,7 +440,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       if (mounted) {
         AppNotification.show(
           context,
-          message: 'Could not resolve coordinates for "${item.title}". Please try another search.',
+          message:
+              'Could not resolve coordinates for "${item.title}". Please try another search.',
           type: NotificationType.warning,
         );
       }
@@ -445,7 +566,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                         ),
                   suffixIcon: _searchCtrl.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear_rounded, color: Color(0xFF94A3B8), size: 18),
+                          icon: const Icon(Icons.clear_rounded,
+                              color: Color(0xFF94A3B8), size: 18),
                           onPressed: () {
                             _searchCtrl.clear();
                             _onSearchChanged('');
@@ -454,7 +576,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                       : null,
                   filled: true,
                   fillColor: const Color(0xFFF8FAFC),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -465,7 +588,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                   ),
                   focusedBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(12)),
-                    borderSide: BorderSide(color: Color(0xFF1B8529), width: 1.5),
+                    borderSide:
+                        BorderSide(color: Color(0xFF1B8529), width: 1.5),
                   ),
                 ),
               ),
@@ -479,7 +603,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                 onTap: _isLocatingGps ? null : _useCurrentLocation,
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF0FDF4),
                     borderRadius: BorderRadius.circular(12),
@@ -529,7 +654,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
             // Section title (Recent Searches or Results)
             if (!isSearching && _recentLocations.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -570,13 +696,18 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  isSearching ? Icons.location_off_outlined : Icons.search_rounded,
+                                  isSearching
+                                      ? Icons.location_off_outlined
+                                      : Icons.search_rounded,
                                   size: 40,
-                                  color: const Color(0xFF94A3B8).withOpacity(0.5),
+                                  color:
+                                      const Color(0xFF94A3B8).withOpacity(0.5),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  isSearching ? 'No locations found' : 'Search any area or neighborhood',
+                                  isSearching
+                                      ? 'No locations found'
+                                      : 'Search any area or neighborhood',
                                   style: const TextStyle(
                                     color: Color(0xFF64748B),
                                     fontSize: 14,
@@ -600,29 +731,38 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                         )
                       : ListView.separated(
                           physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 6),
                           itemCount: _searchResults.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                          separatorBuilder: (_, __) => const Divider(
+                              height: 1, color: Color(0xFFF1F5F9)),
                           itemBuilder: (context, idx) {
                             final item = _searchResults[idx];
-                            final isRecent = !isSearching && _recentLocations.contains(item);
+                            final isRecent =
+                                !isSearching && _recentLocations.contains(item);
 
                             return InkWell(
                               onTap: () => _selectLocation(item),
                               borderRadius: BorderRadius.circular(10),
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 4),
                                 child: Row(
                                   children: [
                                     Icon(
-                                      isRecent ? Icons.history_rounded : Icons.place_outlined,
-                                      color: isRecent ? const Color(0xFF94A3B8) : const Color(0xFF1B8529),
+                                      isRecent
+                                          ? Icons.history_rounded
+                                          : Icons.place_outlined,
+                                      color: isRecent
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF1B8529),
                                       size: 18,
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             item.title,
@@ -705,7 +845,8 @@ class _LocationSkeletonListState extends State<_LocationSkeletonList>
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           itemCount: 6,
           physics: const NeverScrollableScrollPhysics(),
-          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF8FAFC)),
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: Color(0xFFF8FAFC)),
           itemBuilder: (_, index) {
             final titleWidthFactor = (0.40 + (index % 3) * 0.16);
             final subtitleWidthFactor = (0.65 + (index % 2) * 0.18);

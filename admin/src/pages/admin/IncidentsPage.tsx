@@ -19,7 +19,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { Select, Pagination, Modal, message } from "antd";
-import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { apiService } from "../../services/apiService";
 import type { CommunityAiReport } from "../../types";
 import { AiSummaryModal } from "../../components/AiSummaryModal";
@@ -35,6 +34,7 @@ import {
   prettifySlug,
   type CommunityData,
 } from "../../services/jurisdictionData";
+import { searchOsmPlaces, type OsmPlaceResult } from "../../services/osmLocationService";
 
 export const IncidentsPage: React.FC = () => {
   const {
@@ -45,7 +45,6 @@ export const IncidentsPage: React.FC = () => {
     updateJurisdictionSettings,
     activePerimeter,
     purgeAllData,
-    config,
   } = useData();
   const navigate = useNavigate();
 
@@ -62,18 +61,14 @@ export const IncidentsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  // Jurisdiction & Google Places live search state
-  const autocompleteServiceRef = useRef<any>(null);
-  const geocoderRef = useRef<any>(null);
+  // Jurisdiction & OpenStreetMap Nominatim live search state
   const searchTimeoutRef = useRef<any>(null);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [communitySearchQuery, setCommunitySearchQuery] = useState("");
   const [dynamicCommunities, setDynamicCommunities] = useState<CommunityData[]>(
     [],
   );
-  const [placeSearchResults, setPlaceSearchResults] = useState<
-    Array<{ id: string; name: string; fullName: string; placeId: string }>
-  >([]);
+  const [placeSearchResults, setPlaceSearchResults] = useState<OsmPlaceResult[]>([]);
 
   const countries = useMemo(() => getAllCountries(), []);
   const states = useMemo(
@@ -83,39 +78,6 @@ export const IncidentsPage: React.FC = () => {
         : [],
     [jurisdictionSettings.countryCode],
   );
-
-  useEffect(() => {
-    if (config?.googleMapsApiKey) {
-      try {
-        setOptions({
-          key: config.googleMapsApiKey,
-          v: "weekly",
-        });
-        Promise.all([importLibrary("places"), importLibrary("geocoding")])
-          .then(() => {
-            const googleObj = (window as any).google;
-            if (
-              !autocompleteServiceRef.current &&
-              googleObj?.maps?.places?.AutocompleteService
-            ) {
-              autocompleteServiceRef.current =
-                new googleObj.maps.places.AutocompleteService();
-            }
-            if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
-              geocoderRef.current = new googleObj.maps.Geocoder();
-            }
-          })
-          .catch((err) => {
-            console.warn(
-              "Failed to load Google Maps libraries in IncidentsPage:",
-              err,
-            );
-          });
-      } catch (err) {
-        console.warn("Google Maps loader config error:", err);
-      }
-    }
-  }, [config?.googleMapsApiKey]);
 
   useEffect(() => {
     if (
@@ -282,162 +244,19 @@ export const IncidentsPage: React.FC = () => {
       const cleanInput = text.trim();
       setIsSearchingPlaces(true);
 
-      searchTimeoutRef.current = setTimeout(() => {
-        const googleObj = (window as any).google;
-        if (
-          !autocompleteServiceRef.current &&
-          googleObj?.maps?.places?.AutocompleteService
-        ) {
-          autocompleteServiceRef.current =
-            new googleObj.maps.places.AutocompleteService();
-        }
-        if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
-          geocoderRef.current = new googleObj.maps.Geocoder();
-        }
-
-        const countryObj = getCountryByCode(jurisdictionSettings.countryCode);
+      searchTimeoutRef.current = setTimeout(async () => {
         const stateObj = getStateByCode(
           jurisdictionSettings.countryCode,
           jurisdictionSettings.stateCode,
         );
-
-        if (autocompleteServiceRef.current) {
-          const req: any = { input: cleanInput };
-          if (
-            jurisdictionSettings.countryCode &&
-            jurisdictionSettings.countryCode !== "ALL"
-          ) {
-            req.componentRestrictions = {
-              country: jurisdictionSettings.countryCode.toLowerCase(),
-            };
-          }
-
-          autocompleteServiceRef.current.getPlacePredictions(
-            req,
-            (predictions: any[] | null, status: any) => {
-              setIsSearchingPlaces(false);
-              if (status === "OK" && predictions && predictions.length > 0) {
-                const seen = new Set<string>();
-                const results: Array<{
-                  id: string;
-                  name: string;
-                  fullName: string;
-                  placeId: string;
-                }> = [];
-                for (const p of predictions) {
-                  const shortName =
-                    p.structured_formatting?.main_text ||
-                    p.description.split(",")[0].trim();
-                  const norm = shortName.toLowerCase().trim();
-                  if (!seen.has(norm)) {
-                    seen.add(norm);
-                    results.push({
-                      id: `gplace-${p.place_id}`,
-                      name: shortName,
-                      fullName: p.description,
-                      placeId: p.place_id,
-                    });
-                  }
-                }
-                setPlaceSearchResults(results);
-              } else if (geocoderRef.current) {
-                const geoQuery = stateObj
-                  ? `${cleanInput}, ${stateObj.name}, ${countryObj?.name || ""}`
-                  : cleanInput;
-                geocoderRef.current.geocode(
-                  {
-                    address: geoQuery,
-                    componentRestrictions:
-                      jurisdictionSettings.countryCode !== "ALL"
-                        ? {
-                            country:
-                              jurisdictionSettings.countryCode.toLowerCase(),
-                          }
-                        : undefined,
-                  },
-                  (results: any[], gStatus: any) => {
-                    if (gStatus === "OK" && results && results.length > 0) {
-                      const seen = new Set<string>();
-                      const fallbackList: Array<{
-                        id: string;
-                        name: string;
-                        fullName: string;
-                        placeId: string;
-                      }> = [];
-                      for (const r of results) {
-                        const shortName =
-                          r.address_components?.[0]?.long_name ||
-                          r.formatted_address.split(",")[0].trim();
-                        const norm = shortName.toLowerCase().trim();
-                        if (!seen.has(norm)) {
-                          seen.add(norm);
-                          fallbackList.push({
-                            id: `gplace-${r.place_id}`,
-                            name: shortName,
-                            fullName: r.formatted_address,
-                            placeId: r.place_id,
-                          });
-                        }
-                      }
-                      setPlaceSearchResults(fallbackList);
-                    } else {
-                      setPlaceSearchResults([]);
-                    }
-                  },
-                );
-              } else {
-                setPlaceSearchResults([]);
-              }
-            },
-          );
-        } else if (geocoderRef.current) {
-          const geoQuery = stateObj
-            ? `${cleanInput}, ${stateObj.name}, ${countryObj?.name || ""}`
-            : cleanInput;
-          geocoderRef.current.geocode(
-            {
-              address: geoQuery,
-              componentRestrictions:
-                jurisdictionSettings.countryCode !== "ALL"
-                  ? { country: jurisdictionSettings.countryCode.toLowerCase() }
-                  : undefined,
-            },
-            (results: any[], gStatus: any) => {
-              setIsSearchingPlaces(false);
-              if (gStatus === "OK" && results && results.length > 0) {
-                const seen = new Set<string>();
-                const fallbackList: Array<{
-                  id: string;
-                  name: string;
-                  fullName: string;
-                  placeId: string;
-                }> = [];
-                for (const r of results) {
-                  const shortName =
-                    r.address_components?.[0]?.long_name ||
-                    r.formatted_address.split(",")[0].trim();
-                  const norm = shortName.toLowerCase().trim();
-                  if (!seen.has(norm)) {
-                    seen.add(norm);
-                    fallbackList.push({
-                      id: `gplace-${r.place_id}`,
-                      name: shortName,
-                      fullName: r.formatted_address,
-                      placeId: r.place_id,
-                    });
-                  }
-                }
-                setPlaceSearchResults(fallbackList);
-              } else {
-                setPlaceSearchResults([]);
-              }
-            },
-          );
-        } else {
-          setIsSearchingPlaces(false);
-          setPlaceSearchResults([]);
-        }
-      }, 180);
+        const results = await searchOsmPlaces(
+          cleanInput,
+          jurisdictionSettings.countryCode,
+          stateObj?.name,
+        );
+        setIsSearchingPlaces(false);
+        setPlaceSearchResults(results);
+      }, 220);
     },
     [jurisdictionSettings.countryCode, jurisdictionSettings.stateCode],
   );
@@ -486,39 +305,21 @@ export const IncidentsPage: React.FC = () => {
       }
 
       const placeMatch = activeResults.find((p) => p.id === val);
-      const googleObj = (window as any).google;
-      if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
-        geocoderRef.current = new googleObj.maps.Geocoder();
-      }
-
-      if (placeMatch && placeMatch.placeId && geocoderRef.current) {
-        geocoderRef.current.geocode(
-          { placeId: placeMatch.placeId },
-          (results: any[], status: any) => {
-            if (status === "OK" && results && results.length > 0) {
-              const loc = results[0].geometry?.location;
-              if (loc) {
-                const pt = { lat: loc.lat(), lng: loc.lng() };
-                const reg = registerDynamicCommunity(
-                  jurisdictionSettings.countryCode,
-                  jurisdictionSettings.stateCode,
-                  placeMatch.name,
-                  pt,
-                );
-                setDynamicCommunities((prev) => {
-                  if (prev.some((c) => c.id === reg.id)) return prev;
-                  return [...prev, reg].sort((a, b) =>
-                    a.name.localeCompare(b.name),
-                  );
-                });
-                updateJurisdictionSettings({
-                  communityId: reg.id,
-                  communityName: reg.name,
-                });
-              }
-            }
-          },
+      if (placeMatch && placeMatch.lat && placeMatch.lng) {
+        const reg = registerDynamicCommunity(
+          jurisdictionSettings.countryCode,
+          jurisdictionSettings.stateCode,
+          placeMatch.name,
+          { lat: placeMatch.lat, lng: placeMatch.lng },
         );
+        setDynamicCommunities((prev) => {
+          if (prev.some((c) => c.id === reg.id)) return prev;
+          return [...prev, reg].sort((a, b) => a.name.localeCompare(b.name));
+        });
+        updateJurisdictionSettings({
+          communityId: reg.id,
+          communityName: reg.name,
+        });
         return;
       }
 

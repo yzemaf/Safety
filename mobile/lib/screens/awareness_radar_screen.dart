@@ -31,7 +31,7 @@ class AwarenessRadarScreen extends StatefulWidget {
 class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
   gmaps.GoogleMapController? _googleMapController;
   final fmap.MapController _fmapController = fmap.MapController();
-  MapEngine _activeEngine = MapEngine.googleMaps;
+  MapEngine _activeEngine = MapEngine.openStreetMap;
   bool _isFollowingGps = true;
   bool _isProgrammaticMove = false;
   Timer? _programmaticMoveTimer;
@@ -393,7 +393,7 @@ class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
               onPressed: () {
                 setState(() {
                   _activeEngine = (_activeEngine == MapEngine.list)
-                      ? MapEngine.googleMaps
+                      ? MapEngine.openStreetMap
                       : MapEngine.list;
                 });
               },
@@ -952,7 +952,7 @@ class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
     List<IncidentReport> incidents,
     SafetySessionProvider sessionProv,
   ) {
-    // Filter to ONLY live open emergency distress beacons / active emergency mode
+    // Filter to live open emergency distress beacons for aura circles
     final liveEmergencyIncidents = incidents.where((inc) =>
         (inc.source == 'safety_mode_emergency' ||
          inc.category == IncidentCategory.emergency ||
@@ -978,7 +978,20 @@ class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
       children: [
         fmap.TileLayer(
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.yzemaf.safety',
+          userAgentPackageName: 'com.yzemaf.safety.safety_app',
+          maxZoom: 19,
+          tileBuilder: (context, tileWidget, tile) {
+            return ColorFiltered(
+              colorFilter: const ColorFilter.matrix(<double>[
+                // Desaturates colors to grayscale and brightens to a clean light silver theme
+                0.28, 0.55, 0.12, 0, 35,
+                0.28, 0.55, 0.12, 0, 35,
+                0.28, 0.55, 0.12, 0, 38,
+                0,    0,    0,    1, 0,
+              ]),
+              child: tileWidget,
+            );
+          },
         ),
         // Community Administrative Boundary Fill & Dotted Outline
         if (_boundaryPoints.length >= 3) ...[
@@ -1006,10 +1019,10 @@ class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
             ],
           ),
         ],
-        // Static Geographic Aura Radar Zones
+        // Geographic Aura Radar Zones
         fmap.CircleLayer(
           circles: [
-            // User Safe Aura Zone
+            // User Safe Aura Zone (120m)
             fmap.CircleMarker(
               point: latlong.LatLng(userLoc.lat, userLoc.lng),
               radius: 120.0,
@@ -1018,7 +1031,7 @@ class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
               borderColor: const Color(0xFF10B981).withOpacity(0.70),
               borderStrokeWidth: 2.0,
             ),
-            // Danger Point Hazard Zones (Live Emergency Only)
+            // Danger Point Hazard Zones (Live Emergency Beacons)
             ...liveEmergencyIncidents.map((inc) {
               const color = Color(0xFFEF4444);
               final pt = latlong.LatLng(inc.location.lat, inc.location.lng);
@@ -1034,32 +1047,32 @@ class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
             }),
           ],
         ),
-        // Clean Static Pin Markers for User, Searched Location, and Live Danger Points
+        // Markers for User, Searched Location, and All Community Incidents
         fmap.MarkerLayer(
           markers: [
-            // 1. User Location Pin
+            // 1. User Location Pin (Emerald Pulse Radar Style)
             fmap.Marker(
               point: latlong.LatLng(userLoc.lat, userLoc.lng),
-              width: 38,
-              height: 38,
+              width: 44,
+              height: 44,
               alignment: Alignment.center,
               child: Container(
-                width: 34,
-                height: 34,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: const Color(0xFF10B981),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2.5),
+                  border: Border.all(color: Colors.white, width: 3.0),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.22),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
+                      color: const Color(0xFF10B981).withOpacity(0.40),
+                      blurRadius: 10,
+                      spreadRadius: 2,
                     ),
                   ],
                 ),
                 child: const Center(
-                  child: Icon(Icons.person_rounded, color: Colors.white, size: 18),
+                  child: Icon(Icons.person_rounded, color: Colors.white, size: 20),
                 ),
               ),
             ),
@@ -1067,57 +1080,67 @@ class _AwarenessRadarScreenState extends State<AwarenessRadarScreen> {
             if (_searchedLocation != null)
               fmap.Marker(
                 point: latlong.LatLng(_searchedLocation!.lat, _searchedLocation!.lng),
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
                 alignment: Alignment.center,
                 child: Container(
-                  width: 34,
-                  height: 34,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: const Color(0xFF2563EB),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2.5),
+                    border: Border.all(color: Colors.white, width: 3.0),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.25),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                        color: const Color(0xFF2563EB).withOpacity(0.40),
+                        blurRadius: 8,
+                        spreadRadius: 1,
                       ),
                     ],
                   ),
                   child: const Center(
-                    child: Icon(Icons.location_on_rounded, color: Colors.white, size: 18),
+                    child: Icon(Icons.location_on_rounded, color: Colors.white, size: 20),
                   ),
                 ),
               ),
-            // 3. Live Emergency Danger Points Markers
-            ...liveEmergencyIncidents.map((inc) {
-              const color = Color(0xFFEF4444);
+            // 3. Incident Markers (Live Emergencies and Community Reports)
+            ...incidents.map((inc) {
+              final isCritical = inc.urgency == IncidentUrgency.critical ||
+                  inc.category == IncidentCategory.emergency ||
+                  inc.source == 'safety_mode_emergency';
+              
+              final Color markerColor = isCritical
+                  ? const Color(0xFFEF4444)
+                  : const Color(0xFFF59E0B);
+
+              final IconData markerIcon = isCritical
+                  ? Icons.emergency_rounded
+                  : Icons.warning_amber_rounded;
 
               return fmap.Marker(
                 point: latlong.LatLng(inc.location.lat, inc.location.lng),
-                width: 36,
-                height: 36,
+                width: 40,
+                height: 40,
                 alignment: Alignment.center,
                 child: GestureDetector(
                   onTap: () => _showIncidentDetails(context, inc, userLoc),
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
-                      color: color,
+                      color: markerColor,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2.5),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.22),
-                          blurRadius: 6,
+                          color: markerColor.withOpacity(0.35),
+                          blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    child: const Center(
-                      child: Icon(Icons.emergency_rounded, color: Colors.white, size: 16),
+                    child: Center(
+                      child: Icon(markerIcon, color: Colors.white, size: 18),
                     ),
                   ),
                 ),

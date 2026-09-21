@@ -1,6 +1,6 @@
 # Technical Specifications & Architecture
 
-This document provides a comprehensive technical reference for the **Safety** ecosystem — spanning the Flutter Mobile Application, Node.js/Fastify Backend Server, React/Vite Admin Response Portal, Firebase Realtime/Firestore Sync, Agora WebRTC Audio Infrastructure, and Google Gemini AI Intelligence Engine.
+This document provides a comprehensive technical reference for the **Safety** ecosystem — spanning the Flutter Mobile Application, Node.js/Fastify Backend Server, React/Vite Admin Response Portal, Firebase Realtime/Firestore Sync, Agora WebRTC Audio Infrastructure, Google Gemini AI Intelligence Engine, and the **Leaflet/OpenStreetMap dual map engine** (default for both the web admin portal and mobile app).
 
 ---
 
@@ -35,9 +35,9 @@ This document provides a comprehensive technical reference for the **Safety** ec
 ┌─────────────────────────────────────────────────────────┐      ┌─────────────────────────────────────────────────────────┐
 │              Admin & Dispatch Web Portal                │      │                      MongoDB Atlas                      │
 │  - React 19, Vite, TypeScript, Custom Minimalist CSS    │      │  - `users`: Guest & Registered Citizens                 │
-│  - Live Google Maps Dispatch Radar (Multi-Jurisdiction) │      │  - `safety_sessions`: Active Walks, Breadcrumbs & State │
-│  - WebRTC Voice Dispatch via Agora Web SDK              │      │  - `incident_reports`: Geo-tagged Community Reports     │
-│  - Incident Triage, Staff Case Notes & AI Threat Modal  │      │  - `staffs`: Regional Responders & Dispatch Officers    │
+│  - Live Leaflet/OSM Dispatch Radar (Default Engine)     │      │  - `safety_sessions`: Active Walks, Breadcrumbs & State │
+│  - Google Maps available as optional alternative engine │      │  - `incident_reports`: Geo-tagged Community Reports     │
+│  - WebRTC Voice Dispatch via Agora Web SDK              │      │  - `staffs`: Regional Responders & Dispatch Officers    │
 └─────────────────────────────────────────────────────────┘      └─────────────────────────────────────────────────────────┘
 ```
 
@@ -206,6 +206,28 @@ Flutter secrets are strictly isolated from source control:
 
 ---
 
+## 2.8 Mobile Map Engine
+
+The Community Radar screen (`awareness_radar_screen.dart`) supports two interchangeable map backends, selected at compile-time via the `_activeEngine` field:
+
+```dart
+// mobile/lib/screens/awareness_radar_screen.dart
+enum MapEngine { googleMaps, openStreetMap, list }
+
+// Default active engine
+MapEngine _activeEngine = MapEngine.openStreetMap;
+```
+
+| Engine | Package | Tiles | API Key |
+|---|---|---|---|
+| **OpenStreetMap (Default)** | `flutter_map ^7.0.2` + `latlong2 ^0.9.1` | `tile.openstreetmap.org` | None required |
+| **Google Maps (Optional)** | `google_maps_flutter ^2.6.1` | Google Maps servers | `MAPS_API_KEY` in `android/local.properties` |
+
+- **Shared feature set across both engines**: GPS follow mode, incident markers, administrative boundary polygons, community perimeter overlay, smooth camera flight, and programmatic map move guard.
+- **OSM boundary resolution**: Coordinates are sourced from `BoundaryService` (Dart), which queries the OSM Nominatim API and applies ray-casting point-in-polygon validation — the same algorithm used on the web portal.
+
+---
+
 ## 3. Fastify Backend Architecture (`backend/`)
 
 The backend is built on **Node.js, TypeScript, and Fastify**, structured for high-throughput geolocation ingestion, fast token issuance, and background escalation workers.
@@ -276,11 +298,14 @@ The Admin Response Center is a modern web application built with **React 19, Vit
 
 ### Key Pages & Capabilities
 1. **Live Radar Map ([`RadarPage.tsx`](file:///c:/Users/DELL/Safety/admin/src/pages/admin/RadarPage.tsx) & [`LiveRadarMap.tsx`](file:///c:/Users/DELL/Safety/admin/src/components/LiveRadarMap.tsx))**:
-   - Google Maps dark/light silver canvas with custom map styles.
+   - **Default engine**: Leaflet 1.9.4 + OpenStreetMap tile layer (`tile.openstreetmap.org`) — zero Google Maps API key required.
+   - **Optional engine**: Google Maps JavaScript API (switchable via `ACTIVE_MAP_ENGINE = 'googlemaps'` constant).
    - Emerald pulsing markers for active walks, crimson wave markers for emergency distress.
    - Citizen breadcrumb trail rendering, battery percentage, velocity, and last ping timestamps.
    - Multi-tier jurisdiction hierarchy filtering (Country, State/Region, Community).
-   - Dispatch Action Drawer: 1-click WebRTC Voice Call, Direct Phone Dialer, Google Maps Navigation Directions, and Emergency Resolution.
+   - Community search powered by **OSM Nominatim** (`osmLocationService.ts`) by default; falls back to Google Places Autocomplete when the Google Maps engine is active.
+   - Administrative boundary polygons fetched from OSM Nominatim GeoJSON with organic `smoothBoundingPolygon()` synthesis fallback (`boundaryService.ts`).
+   - Dispatch Action Drawer: 1-click WebRTC Voice Call, Direct Phone Dialer, Navigation Directions, and Emergency Resolution.
 2. **Emergency Dispatch Voice Modal ([`EmergencyCallModal.tsx`](file:///c:/Users/DELL/Safety/admin/src/components/EmergencyCallModal.tsx))**:
    - In-browser voice room powered by Agora RTC Web SDK (`agora-rtc-sdk-ng`).
    - Live call duration timer, mute/unmute microphone toggle, speaker volume controls, and call termination.
@@ -295,6 +320,42 @@ The Admin Response Center is a modern web application built with **React 19, Vit
 5. **Public Landing Page ([`LandingPage.tsx`](file:///c:/Users/DELL/Safety/admin/src/pages/LandingPage.tsx))**:
    - Live interactive Safety Mode simulator with countdown ring.
    - Android APK direct download gateway with QR code scanner.
+
+### 4.1 Map Engine Architecture
+
+The `LiveRadarMap` component implements a **dual map engine** controlled by the `ACTIVE_MAP_ENGINE` constant:
+
+```typescript
+// admin/src/components/LiveRadarMap.tsx
+export type MapEngineMode = 'osm' | 'googlemaps';
+export const ACTIVE_MAP_ENGINE: MapEngineMode = 'osm'; // ← Default: OpenStreetMap
+```
+
+#### OpenStreetMap / Leaflet Engine (Default)
+- **Package**: `leaflet ^1.9.4` + `@types/leaflet ^1.9.22`
+- **Tile URL**: `https://tile.openstreetmap.org/{z}/{x}/{y}.png` with CSS silver grayscale filter (`className: 'osm-silver-tiles'`)
+- **Refs**: `leafletMapRef` (`L.Map`), `leafletMarkersRef` (`Map<string, L.Marker>`), `leafletBoundaryLayersRef` (`L.Layer[]`)
+- **Camera flight**: `leafletMapRef.current.flyTo([lat, lng], zoom, { duration: 0.8, easeLinearity: 0.25 })`
+- **Markers**: Custom `L.divIcon` HTML elements with radar ring pulsing animations
+- **Boundary overlays**: `L.polygon()` rendered from OSM Nominatim GeoJSON paths
+- **Community search**: [`osmLocationService.ts`](file:///c:/Users/DELL/Safety/admin/src/services/osmLocationService.ts) — queries `nominatim.openstreetmap.org/search` with regional viewbox (±4° around active perimeter center) and Haversine distance sorting
+- **No API key required**
+
+#### Google Maps Engine (Optional)
+- **Package**: `@googlemaps/js-api-loader ^2.1.1` + `@types/google.maps ^3.66.2`
+- **Refs**: `googleMapInstanceRef`, `chipClassRef` (custom `OverlayView` floating chips), `activeHandlesRef`, `googleBoundaryLayersRef`
+- **Camera flight**: Custom 60fps cubic-bezier RAF animation engine with altitude arc lift for long-distance jumps
+- **Markers**: `FloatingLocationChip` (extends `google.maps.OverlayView`) — custom HTML chip anchored to map projection pixels
+- **Boundary overlays**: `google.maps.Polygon` rendered from GeoJSON paths
+- **Community search**: Google Places `AutocompleteService` with `Geocoder` fallback
+- **Requires**: `VITE_GOOGLE_MAPS_API_KEY` in `admin/.env`
+
+#### Shared Services (Engine-Agnostic)
+| Service | File | Description |
+|---|---|---|
+| **`boundaryService.ts`** | [`boundaryService.ts`](file:///c:/Users/DELL/Safety/admin/src/services/boundaryService.ts) | Fetches real GeoJSON admin boundaries from OSM Nominatim. Two-pass logic: prefer official `Polygon`/`MultiPolygon`; synthesize organic `smoothBoundingPolygon()` from bounding box if unavailable; fall back to `generatePerimeterPolygon()` centroid synthesis. In-memory LRU cache keyed by `query::level`. |
+| **`osmLocationService.ts`** | [`osmLocationService.ts`](file:///c:/Users/DELL/Safety/admin/src/services/osmLocationService.ts) | Nominatim place search: deduplicates results, computes Haversine distances, and sorts by proximity to current perimeter center. |
+| **`jurisdictionData.ts`** | [`jurisdictionData.ts`](file:///c:/Users/DELL/Safety/admin/src/services/jurisdictionData.ts) | Static country/state registry, dynamic community registration, and `findJurisdictionForSession()` auto-detection for map fly-to on session selection. |
 
 ---
 

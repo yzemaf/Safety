@@ -20,7 +20,7 @@ import {
 import { CountryFlag } from '../components/CountryFlag';
 
 export const LandingPage: React.FC = () => {
-  const apkDownloadUrl = window.location.origin + '/downloads/safety-app-latest.apk';
+  const apkDownloadUrl = 'https://pub-8450631443cd4ea7978907598a15212e.r2.dev/app-release.apk';
 
   // State for the "Pillars of Protection" interactive tab switcher & autoplay
   const [activeTab, setActiveTab] = useState<number>(0);

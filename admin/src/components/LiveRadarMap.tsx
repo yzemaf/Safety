@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { 
   Navigation, 
   Battery, 
@@ -27,22 +29,31 @@ import { TbDeviceLandlinePhone } from 'react-icons/tb';
 import { CountryFlag } from './CountryFlag';
 import { 
   getAllCountries, 
-  getCountryByCode,
+  getCountryByCode, 
   getStatesForCountry, 
-  getStateByCode,
-  getCommunitiesForState,
-  registerDynamicCommunity,
-  prettifySlug,
-  findJurisdictionForSession,
-  type CommunityData
+  getStateByCode, 
+  getCommunitiesForState, 
+  registerDynamicCommunity, 
+  prettifySlug, 
+  findJurisdictionForSession, 
+  type CommunityData 
 } from '../services/jurisdictionData';
 import { 
   buildJurisdictionQuery, 
   fetchRealBoundaryGeoJson, 
   geoJsonToPolygonPaths 
 } from '../services/boundaryService';
+import { searchOsmPlaces } from '../services/osmLocationService';
 
-// Custom Minimalist Light Silver / Pastel Google Maps Style matching reference image
+// ============================================================================
+// TOP-LEVEL MAP ENGINE TOGGLE
+// Set to 'osm' for OpenStreetMap (zero API keys required)
+// Set to 'googlemaps' for Google Maps JavaScript API
+// ============================================================================
+export type MapEngineMode = 'osm' | 'googlemaps';
+export const ACTIVE_MAP_ENGINE: MapEngineMode = 'osm';
+
+// Custom Minimalist Light Silver / Pastel Google Maps Style
 const LIGHT_SILVER_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#F7F8FA' }] },
   { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
@@ -89,12 +100,14 @@ interface LiveRadarMapProps {
   sessions: SafetySession[];
   reports: IncidentReport[];
   googleMapsApiKey?: string;
+  engine?: MapEngineMode;
   onInitiateAgoraCall: (session: SafetySession) => void;
   onResolveSession: (sessionId: string) => void;
 }
 
 export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
   googleMapsApiKey,
+  engine = ACTIVE_MAP_ENGINE,
   onInitiateAgoraCall,
   onResolveSession: _onResolveSession,
 }) => {
@@ -141,10 +154,27 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     );
   }, [selectedSession, reports]);
 
-  const [isGoogleMapLoaded, setIsGoogleMapLoaded] = useState(false);
-  const mapType = 'roadmap' as const;
+  const [isMapReady, setIsMapReady] = useState(false);
+
+  // --------------------------------------------------------------------------
+  // GOOGLE MAPS ENGINE REFS
+  // --------------------------------------------------------------------------
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const googleMapInstanceRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chipClassRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const activeHandlesRef = useRef<Map<string, { marker: any; overlay: any; update: (s: SafetySession, sel: boolean) => void; destroy: () => void }>>(new Map());
+  const cameraAnimRef = useRef<number | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const googleBoundaryLayersRef = useRef<any[]>([]);
+
+  // --------------------------------------------------------------------------
+  // OPENSTREETMAP LEAFLET ENGINE REFS
+  // --------------------------------------------------------------------------
+  const leafletMapRef = useRef<L.Map | null>(null);
+  const leafletMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const leafletBoundaryLayersRef = useRef<L.Layer[]>([]);
 
   // Memoized derived values (filters by global header search)
   const displayedQueue = useMemo(() => filteredSessions.filter((s) => {
@@ -176,13 +206,14 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
       : [],
     [jurisdictionSettings.countryCode]
   );
+
   const autocompleteServiceRef = useRef<any>(null);
   const geocoderRef = useRef<any>(null);
   const searchTimeoutRef = useRef<any>(null);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [communitySearchQuery, setCommunitySearchQuery] = useState('');
   const [dynamicCommunities, setDynamicCommunities] = useState<CommunityData[]>([]);
-  const [placeSearchResults, setPlaceSearchResults] = useState<Array<{ id: string; name: string; fullName: string; placeId: string }>>([]);
+  const [placeSearchResults, setPlaceSearchResults] = useState<Array<{ id: string; name: string; fullName: string; lat?: number; lng?: number; placeId?: string }>>([]);
 
   useEffect(() => {
     if (jurisdictionSettings.countryCode !== 'ALL' && jurisdictionSettings.stateCode !== 'ALL') {
@@ -193,6 +224,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     }
   }, [jurisdictionSettings.countryCode, jurisdictionSettings.stateCode, jurisdictionSettings.communityId]);
 
+  // LIVE COMMUNITY SEARCH (OPENSTREETMAP NOMINATIM OR GOOGLE PLACES)
   const handleCommunitySearch = useCallback((text: string) => {
     setCommunitySearchQuery(text);
 
@@ -209,122 +241,97 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     const cleanInput = text.trim();
     setIsSearchingPlaces(true);
 
-    searchTimeoutRef.current = setTimeout(() => {
-      const googleObj = (window as any).google;
-      if (!autocompleteServiceRef.current && googleObj?.maps?.places?.AutocompleteService) {
-        autocompleteServiceRef.current = new googleObj.maps.places.AutocompleteService();
-      }
-      if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
-        geocoderRef.current = new googleObj.maps.Geocoder();
-      }
-
-      const countryObj = getCountryByCode(jurisdictionSettings.countryCode);
+    searchTimeoutRef.current = setTimeout(async () => {
       const stateObj = getStateByCode(jurisdictionSettings.countryCode, jurisdictionSettings.stateCode);
 
-      if (autocompleteServiceRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const req: any = {
-          input: cleanInput,
-        };
-
-        if (jurisdictionSettings.countryCode && jurisdictionSettings.countryCode !== 'ALL') {
-          req.componentRestrictions = { country: jurisdictionSettings.countryCode.toLowerCase() };
+      if (engine === 'osm') {
+        // OpenStreetMap Nominatim Search with Dynamic Regional Viewbox & Distance Sorting
+        const results = await searchOsmPlaces(
+          cleanInput,
+          jurisdictionSettings.countryCode,
+          stateObj?.name,
+          activePerimeter?.center
+        );
+        setIsSearchingPlaces(false);
+        setPlaceSearchResults(results);
+      } else {
+        // Original Google Places Autocomplete Search
+        const googleObj = (window as any).google;
+        if (!autocompleteServiceRef.current && googleObj?.maps?.places?.AutocompleteService) {
+          autocompleteServiceRef.current = new googleObj.maps.places.AutocompleteService();
+        }
+        if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
+          geocoderRef.current = new googleObj.maps.Geocoder();
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        autocompleteServiceRef.current.getPlacePredictions(req, (predictions: any[] | null, status: any) => {
-          setIsSearchingPlaces(false);
-          if (status === 'OK' && predictions && predictions.length > 0) {
-            const seen = new Set<string>();
-            const results: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
-            for (const p of predictions) {
-              const shortName = p.structured_formatting?.main_text || p.description.split(',')[0].trim();
-              const norm = shortName.toLowerCase().trim();
-              if (!seen.has(norm)) {
-                seen.add(norm);
-                results.push({
-                  id: `gplace-${p.place_id}`,
-                  name: shortName,
-                  fullName: p.description,
-                  placeId: p.place_id,
-                });
-              }
-            }
-            setPlaceSearchResults(results);
-          } else if (geocoderRef.current) {
-            // Fallback to Google Geocoder if autocomplete returned no direct matches
-            const geoQuery = stateObj ? `${cleanInput}, ${stateObj.name}, ${countryObj?.name || ''}` : cleanInput;
-            geocoderRef.current.geocode(
-              {
-                address: geoQuery,
-                componentRestrictions: jurisdictionSettings.countryCode !== 'ALL' ? { country: jurisdictionSettings.countryCode.toLowerCase() } : undefined,
-              },
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (results: any[], gStatus: any) => {
-                if (gStatus === 'OK' && results && results.length > 0) {
-                  const seen = new Set<string>();
-                  const fallbackList: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
-                  for (const r of results) {
-                    const shortName = r.address_components?.[0]?.long_name || r.formatted_address.split(',')[0].trim();
-                    const norm = shortName.toLowerCase().trim();
-                    if (!seen.has(norm)) {
-                      seen.add(norm);
-                      fallbackList.push({
-                        id: `gplace-${r.place_id}`,
-                        name: shortName,
-                        fullName: r.formatted_address,
-                        placeId: r.place_id,
-                      });
-                    }
-                  }
-                  setPlaceSearchResults(fallbackList);
-                } else {
-                  setPlaceSearchResults([]);
-                }
-              }
-            );
-          } else {
-            setPlaceSearchResults([]);
+        const countryObj = getCountryByCode(jurisdictionSettings.countryCode);
+
+        if (autocompleteServiceRef.current) {
+          const req: any = { input: cleanInput };
+          if (jurisdictionSettings.countryCode && jurisdictionSettings.countryCode !== 'ALL') {
+            req.componentRestrictions = { country: jurisdictionSettings.countryCode.toLowerCase() };
           }
-        });
-      } else if (geocoderRef.current) {
-        const geoQuery = stateObj ? `${cleanInput}, ${stateObj.name}, ${countryObj?.name || ''}` : cleanInput;
-        geocoderRef.current.geocode(
-          {
-            address: geoQuery,
-            componentRestrictions: jurisdictionSettings.countryCode !== 'ALL' ? { country: jurisdictionSettings.countryCode.toLowerCase() } : undefined,
-          },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (results: any[], gStatus: any) => {
+
+          autocompleteServiceRef.current.getPlacePredictions(req, (predictions: any[] | null, status: any) => {
             setIsSearchingPlaces(false);
-            if (gStatus === 'OK' && results && results.length > 0) {
+            if (status === 'OK' && predictions && predictions.length > 0) {
               const seen = new Set<string>();
-              const fallbackList: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
-              for (const r of results) {
-                const shortName = r.address_components?.[0]?.long_name || r.formatted_address.split(',')[0].trim();
+              const list: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
+              for (const p of predictions) {
+                const shortName = p.structured_formatting?.main_text || p.description.split(',')[0].trim();
                 const norm = shortName.toLowerCase().trim();
                 if (!seen.has(norm)) {
                   seen.add(norm);
-                  fallbackList.push({
-                    id: `gplace-${r.place_id}`,
+                  list.push({
+                    id: `gplace-${p.place_id}`,
                     name: shortName,
-                    fullName: r.formatted_address,
-                    placeId: r.place_id,
+                    fullName: p.description,
+                    placeId: p.place_id,
                   });
                 }
               }
-              setPlaceSearchResults(fallbackList);
+              setPlaceSearchResults(list);
+            } else if (geocoderRef.current) {
+              const geoQuery = stateObj ? `${cleanInput}, ${stateObj.name}, ${countryObj?.name || ''}` : cleanInput;
+              geocoderRef.current.geocode(
+                {
+                  address: geoQuery,
+                  componentRestrictions: jurisdictionSettings.countryCode !== 'ALL' ? { country: jurisdictionSettings.countryCode.toLowerCase() } : undefined,
+                },
+                (results: any[], gStatus: any) => {
+                  if (gStatus === 'OK' && results && results.length > 0) {
+                    const seen = new Set<string>();
+                    const fallbackList: Array<{ id: string; name: string; fullName: string; placeId: string }> = [];
+                    for (const r of results) {
+                      const shortName = r.address_components?.[0]?.long_name || r.formatted_address.split(',')[0].trim();
+                      const norm = shortName.toLowerCase().trim();
+                      if (!seen.has(norm)) {
+                        seen.add(norm);
+                        fallbackList.push({
+                          id: `gplace-${r.place_id}`,
+                          name: shortName,
+                          fullName: r.formatted_address,
+                          placeId: r.place_id,
+                        });
+                      }
+                    }
+                    setPlaceSearchResults(fallbackList);
+                  } else {
+                    setPlaceSearchResults([]);
+                  }
+                }
+              );
             } else {
               setPlaceSearchResults([]);
             }
-          }
-        );
-      } else {
-        setIsSearchingPlaces(false);
-        setPlaceSearchResults([]);
+          });
+        } else {
+          setIsSearchingPlaces(false);
+          setPlaceSearchResults([]);
+        }
       }
-    }, 180);
-  }, [jurisdictionSettings.countryCode, jurisdictionSettings.stateCode]);
+    }, 200);
+  }, [engine, jurisdictionSettings.countryCode, jurisdictionSettings.stateCode, activePerimeter?.center]);
 
   const handleCommunitySelect = useCallback((val: string) => {
     const activeResults = [...placeSearchResults];
@@ -357,13 +364,30 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     }
 
     const placeMatch = activeResults.find((p) => p.id === val);
+
+    // OSM direct coordinates
+    if (placeMatch && placeMatch.lat !== undefined && placeMatch.lng !== undefined) {
+      const reg = registerDynamicCommunity(
+        jurisdictionSettings.countryCode,
+        jurisdictionSettings.stateCode,
+        placeMatch.name,
+        { lat: placeMatch.lat, lng: placeMatch.lng }
+      );
+      setDynamicCommunities((prev) => {
+        if (prev.some((c) => c.id === reg.id)) return prev;
+        return [...prev, reg].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      updateJurisdictionSettings({ communityId: reg.id, communityName: reg.name });
+      return;
+    }
+
+    // Google Geocoder lookup
     const googleObj = (window as any).google;
     if (!geocoderRef.current && googleObj?.maps?.Geocoder) {
       geocoderRef.current = new googleObj.maps.Geocoder();
     }
 
     if (placeMatch && placeMatch.placeId && geocoderRef.current) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       geocoderRef.current.geocode({ placeId: placeMatch.placeId }, (results: any[], status: any) => {
         if (status === 'OK' && results && results.length > 0) {
           const loc = results[0].geometry?.location;
@@ -429,7 +453,6 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
     const opts: Array<{ value: string; searchValue: string; label: React.ReactNode }> = [];
 
-    // Show 'ALL' when not actively filtering
     if (!isTyping) {
       opts.push({ 
         value: 'ALL', 
@@ -440,8 +463,6 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
     const seenNames = new Set<string>();
 
-    // 1. Registered dynamic communities (previously picked)
-    // Only show if not typing, OR if they match what the user is typing
     for (const cm of dynamicCommunities) {
       const norm = cm.name.toLowerCase().trim();
       if (isTyping && !norm.includes(query)) {
@@ -463,7 +484,6 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
       }
     }
 
-    // 2. Live deduplicated Google Places search predictions (only shown when results exist)
     for (const p of placeSearchResults) {
       const norm = p.name.toLowerCase().trim();
       if (!seenNames.has(norm)) {
@@ -487,7 +507,6 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
       }
     }
 
-    // Ensure the currently selected community is present in options so Antd can render its label properly
     if (jurisdictionSettings.communityId && jurisdictionSettings.communityId !== 'ALL') {
       const isAlreadyInOpts = opts.some((o) => o.value === jurisdictionSettings.communityId);
       if (!isAlreadyInOpts) {
@@ -525,19 +544,19 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     return opts;
   }, [dynamicCommunities, placeSearchResults, communitySearchQuery, jurisdictionSettings.communityId]);
 
-  // Trigger Google Maps resize recalculation whenever container dimensions change or panels toggle
+  // Trigger resize recalculation
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const googleObj = (window as any).google;
-    if (!googleMapInstanceRef.current || !googleObj?.maps?.event) return;
-
     const triggerResize = () => {
-      if (googleMapInstanceRef.current && googleObj?.maps?.event) {
-        googleObj.maps.event.trigger(googleMapInstanceRef.current, 'resize');
+      if (engine === 'osm' && leafletMapRef.current) {
+        leafletMapRef.current.invalidateSize();
+      } else if (engine === 'googlemaps' && googleMapInstanceRef.current) {
+        const googleObj = (window as any).google;
+        if (googleObj?.maps?.event) {
+          googleObj.maps.event.trigger(googleMapInstanceRef.current, 'resize');
+        }
       }
     };
 
-    // Debounce to one animation frame — avoids layout thrash during sidebar slide animation
     let rafId: number | null = null;
     const handleResize = () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
@@ -558,80 +577,23 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (observer) observer.disconnect();
     };
-  }, [isQueueCollapsed, isInspectorCollapsed, isGoogleMapLoaded]);
+  }, [engine, isQueueCollapsed, isInspectorCollapsed, isMapReady]);
 
-  // Ref to the FloatingLocationChip class — created once after map loads, never re-defined
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chipClassRef = useRef<any>(null);
-  // Tracks the last boundary query sent to Nominatim to avoid duplicate fetches
-  const lastBoundaryQueryRef = useRef<string>('');
-
-  // Load Google Maps with Custom Light Silver Minimalist Palette
-  useEffect(() => {
-    if (!googleMapsApiKey || !mapContainerRef.current) {
-      setIsGoogleMapLoaded(false);
+  // --------------------------------------------------------------------------
+  // CONTINUOUS 60FPS CINEMATIC CAMERA FLIGHT ENGINE
+  // --------------------------------------------------------------------------
+  const smoothFlyTo = useCallback((targetCenter: { lat: number; lng: number }, targetZoom: number) => {
+    if (engine === 'osm') {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.flyTo([targetCenter.lat, targetCenter.lng], targetZoom, {
+          duration: 0.8,
+          easeLinearity: 0.25,
+        });
+      }
       return;
     }
 
-    let isMounted = true;
-
-    async function initMap() {
-      try {
-        setOptions({
-          key: googleMapsApiKey,
-          v: 'weekly',
-        });
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { Map } = (await importLibrary('maps')) as any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const placesLib = (await importLibrary('places')) as any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const geocodingLib = (await importLibrary('geocoding')) as any;
-
-        if (placesLib?.AutocompleteService) {
-          autocompleteServiceRef.current = new placesLib.AutocompleteService();
-        }
-        if (geocodingLib?.Geocoder) {
-          geocoderRef.current = new geocodingLib.Geocoder();
-        }
-
-        if (!isMounted || !mapContainerRef.current) return;
-
-        const initialCenter = activePerimeter.center || { lat: 20.0, lng: 10.0 };
-
-        const map = new Map(mapContainerRef.current, {
-          center: initialCenter,
-          zoom: activePerimeter.zoom || 3,
-          mapTypeId: mapType,
-          styles: LIGHT_SILVER_MAP_STYLE,
-          disableDefaultUI: true,
-          zoomControl: false,
-          // Enable fractional zoom for silky-smooth camera interpolation between levels
-          isFractionalZoomEnabled: true,
-        });
-
-        googleMapInstanceRef.current = map;
-        setIsGoogleMapLoaded(true);
-      } catch (err: unknown) {
-        console.warn('Google Maps loader error (using fallback radar view):', err);
-        if (isMounted) setIsGoogleMapLoaded(false);
-      }
-    }
-
-    initMap();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [googleMapsApiKey]);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const activeHandlesRef = useRef<Map<string, { marker: any; overlay: any; update: (s: SafetySession, sel: boolean) => void; destroy: () => void }>>(new Map());
-  const cameraAnimRef = useRef<number | null>(null);
-
-  // Continuous 60fps Cinematic Camera Flight Engine (Zero Jumps / Zero Skips)
-  const smoothFlyTo = (targetCenter: { lat: number; lng: number }, targetZoom: number) => {
+    // Google Maps Continuous Flight Engine
     if (!googleMapInstanceRef.current) return;
     const map = googleMapInstanceRef.current;
 
@@ -655,10 +617,8 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     const dLng = targetCenter.lng - startLng;
     const dist = Math.sqrt(dLat * dLat + dLng * dLng);
 
-    // If already at target coordinates and zoom, return
     if (dist < 0.0001 && Math.abs(startZoom - targetZoom) === 0) return;
 
-    // Dynamically scale duration based on geographic distance
     const duration = Math.min(1000, Math.max(600, dist * 140 + 520));
     const startTime = performance.now();
 
@@ -675,13 +635,12 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
       map.setCenter({ lat: curLat, lng: curLng });
 
       if (startZoom !== targetZoom) {
-        // Fractional zoom — no Math.round, lets isFractionalZoomEnabled interpolate tiles smoothly
         let curZoomVal = startZoom + (targetZoom - startZoom) * ease;
         if (dist > 1.2 && progress > 0.15 && progress < 0.85) {
           const altitudeLift = Math.sin(progress * Math.PI) * Math.min(2.5, dist * 0.35);
           curZoomVal = Math.max(2.5, curZoomVal - altitudeLift);
         }
-        map.setZoom(curZoomVal); // fractional — no rounding, no equality guard
+        map.setZoom(curZoomVal);
       }
 
       if (progress < 1) {
@@ -694,15 +653,12 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     };
 
     cameraAnimRef.current = requestAnimationFrame(frame);
-  };
+  }, [engine]);
 
   const handleSelectSession = useCallback((sess: SafetySession) => {
     setSelectedSessionId(sess.id);
-
-    // 1. Automatically open the Citizen Details inspector panel
     setIsInspectorCollapsed(false);
 
-    // 2. Automatically select citizen's state and community in jurisdiction settings
     const targetJur = findJurisdictionForSession(sess);
     if (targetJur) {
       updateJurisdictionSettings({
@@ -714,150 +670,123 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
       });
     }
 
-    // 3. Smooth fly camera directly to citizen's live GPS coordinates with street-level zoom
     smoothFlyTo({ lat: sess.currentLocation.lat, lng: sess.currentLocation.lng }, 15.5);
-  }, [updateJurisdictionSettings]);
+  }, [updateJurisdictionSettings, smoothFlyTo]);
 
-  // SMOOTH CINEMATIC CAMERA FLIGHT ON JURISDICTION SWITCH
+  // Smooth camera flight on jurisdiction switch
   useEffect(() => {
-    if (!isGoogleMapLoaded || !googleMapInstanceRef.current) return;
+    if (!isMapReady) return;
     const targetCenter = activePerimeter.center || { lat: 20.0, lng: 10.0 };
     const targetZoom = Math.round(activePerimeter.zoom || (activePerimeter.level === 'global' ? 3 : 6));
     smoothFlyTo(targetCenter, targetZoom);
+  }, [isMapReady, activePerimeter, smoothFlyTo]);
 
-    return () => {
-      if (cameraAnimRef.current) {
-        cancelAnimationFrame(cameraAnimRef.current);
-        cameraAnimRef.current = null;
-      }
-    };
-  }, [isGoogleMapLoaded, activePerimeter]);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const boundaryLayersRef = useRef<any[]>([]);
-
-  // REAL-WORLD GEOGRAPHIC ADMINISTRATIVE BOUNDARY OVERLAY (GEOJSON + DOTTED PERIMETER)
+  // --------------------------------------------------------------------------
+  // INITIALIZE MAP (OSM LEAFLET VS GOOGLE MAPS)
+  // --------------------------------------------------------------------------
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const googleObj = (window as any).google;
-    if (!isGoogleMapLoaded || !googleMapInstanceRef.current || !googleObj?.maps) return;
-
-    const map = googleMapInstanceRef.current;
-
-    // Only render boundary outline if in community focus mode or country/state selected
-    if (jurisdictionSettings.mode === 'global' || activePerimeter.level === 'global') {
-      // Clear any existing boundary layers when switching to global
-      boundaryLayersRef.current.forEach((layer) => {
-        if (layer && typeof layer.setMap === 'function') layer.setMap(null);
-      });
-      boundaryLayersRef.current = [];
-      lastBoundaryQueryRef.current = '';
-      return;
-    }
-
-    const query = buildJurisdictionQuery(
-      activePerimeter.countryName,
-      activePerimeter.stateName,
-      activePerimeter.communityName
-    );
-
-    // Clean up previous boundary layers before drawing new ones
-    boundaryLayersRef.current.forEach((layer) => {
-      if (layer && typeof layer.setMap === 'function') layer.setMap(null);
-    });
-    boundaryLayersRef.current = [];
-
+    if (!mapContainerRef.current) return;
     let isMounted = true;
 
-    const lineSymbol = {
-      path: 'M 0,-1 0,1',
-      strokeOpacity: 1,
-      scale: 3.5,
-      strokeColor: '#059669',
-    };
+    const initialCenter = activePerimeter.center || { lat: 20.0, lng: 10.0 };
+    const initialZoom = activePerimeter.zoom || 3;
 
-    // Helper to render boundary polygon and dotted perimeter onto Google Maps
-    const renderBoundaryLayers = (paths: { lat: number; lng: number }[][]) => {
-      if (!isMounted || paths.length === 0) return;
+    if (engine === 'osm') {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+      }
 
-      // Clean up previous layers
-      boundaryLayersRef.current.forEach((layer) => {
-        if (layer && typeof layer.setMap === 'function') layer.setMap(null);
+      const map = L.map(mapContainerRef.current, {
+        center: [initialCenter.lat, initialCenter.lng],
+        zoom: initialZoom,
+        zoomControl: false,
+        attributionControl: false,
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const newLayers: any[] = [];
 
-      // 1. Semi-transparent emerald tint polygon
-      const polygon = new googleObj.maps.Polygon({
-        paths,
-        strokeColor: '#10B981',
-        strokeOpacity: 0.65,
-        strokeWeight: 2,
-        fillColor: '#10B981',
-        fillOpacity: 0.12,
-        map,
-        clickable: false,
-        zIndex: 10,
-      });
-      newLayers.push(polygon);
+      // Standard OSM Tiles with CSS silver grayscale styling (zero watermarks)
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        className: 'osm-silver-tiles',
+      }).addTo(map);
 
-      // 2. Dotted/dashed SVG polyline along the geographical perimeter contour
-      paths.forEach((ring) => {
-        if (Array.isArray(ring) && ring.length >= 3) {
-          const polyline = new googleObj.maps.Polyline({
-            path: ring,
-            strokeOpacity: 0,
-            icons: [{ icon: lineSymbol, offset: '0', repeat: '12px' }],
-            map,
-            clickable: false,
-            zIndex: 12,
-          });
-          newLayers.push(polyline);
+      leafletMapRef.current = map;
+      setIsMapReady(true);
+
+      return () => {
+        if (leafletMapRef.current) {
+          leafletMapRef.current.remove();
+          leafletMapRef.current = null;
         }
-      });
+        setIsMapReady(false);
+      };
+    } else {
+      // Google Maps Initializer
+      if (!googleMapsApiKey) {
+        setIsMapReady(false);
+        return;
+      }
 
-      boundaryLayersRef.current = newLayers;
-    };
+      async function initGoogleMap() {
+        try {
+          setOptions({
+            key: googleMapsApiKey!,
+            v: 'weekly',
+          });
 
-    // 1. Instantly render pre-calculated local boundary (0ms latency, guaranteed visible border)
-    if (activePerimeter.boundary && activePerimeter.boundary.length >= 3) {
-      renderBoundaryLayers([activePerimeter.boundary]);
-    }
+          const { Map } = (await importLibrary('maps')) as any;
+          const placesLib = (await importLibrary('places')) as any;
+          const geocodingLib = (await importLibrary('geocoding')) as any;
 
-    // 2. Asynchronously fetch high-detail administrative polygon from OpenStreetMap
-    async function loadOsmBoundary() {
-      if (!query.trim()) return;
-      const level = activePerimeter.level === 'country' ? 'country' : activePerimeter.level === 'state' ? 'state' : 'community';
-      const geoJson = await fetchRealBoundaryGeoJson(query, activePerimeter.center, level);
-      if (isMounted && geoJson) {
-        const osmPaths = geoJsonToPolygonPaths(geoJson);
-        if (osmPaths.length > 0 && osmPaths[0].length >= 3) {
-          renderBoundaryLayers(osmPaths);
+          if (placesLib?.AutocompleteService) {
+            autocompleteServiceRef.current = new placesLib.AutocompleteService();
+          }
+          if (geocodingLib?.Geocoder) {
+            geocoderRef.current = new geocodingLib.Geocoder();
+          }
+
+          if (!isMounted || !mapContainerRef.current) return;
+
+          const map = new Map(mapContainerRef.current, {
+            center: initialCenter,
+            zoom: initialZoom,
+            mapTypeId: 'roadmap',
+            styles: LIGHT_SILVER_MAP_STYLE,
+            disableDefaultUI: true,
+            zoomControl: false,
+            isFractionalZoomEnabled: true,
+          });
+
+          googleMapInstanceRef.current = map;
+          setIsMapReady(true);
+        } catch (err) {
+          console.warn('Google Maps loader error:', err);
+          if (isMounted) setIsMapReady(false);
         }
       }
+
+      initGoogleMap();
+
+      return () => {
+        isMounted = false;
+      };
     }
+  }, [engine, googleMapsApiKey]);
 
-    loadOsmBoundary();
-
-    return () => { isMounted = false; };
-  }, [isGoogleMapLoaded, activePerimeter, jurisdictionSettings.mode]);
-
-  // Build FloatingLocationChip class ONCE after map loads — stored in chipClassRef so it's
-  // never re-declared on subsequent renders, preventing prototype churn and GC pressure.
+  // --------------------------------------------------------------------------
+  // GOOGLE MAPS OVERLAYVIEW CLASS SETUP
+  // --------------------------------------------------------------------------
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (engine !== 'googlemaps' || !isMapReady) return;
     const googleObj = (window as any).google;
-    if (!isGoogleMapLoaded || !googleObj?.maps) return;
+    if (!googleObj?.maps) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     class FloatingLocationChip extends googleObj.maps.OverlayView {
       private div: HTMLDivElement | null = null;
       private session: SafetySession;
       private isSelected: boolean;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       private onSelect: (s: SafetySession) => void;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       constructor(sess: SafetySession, isSelected: boolean, onSelect: (s: SafetySession) => void) {
         super();
         this.session = sess;
@@ -980,7 +909,6 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
         if (!overlayProjection) return;
         try {
           const pos = overlayProjection.fromLatLngToDivPixel(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             new (googleObj as any).maps.LatLng(this.session.currentLocation.lat, this.session.currentLocation.lng)
           );
           if (pos) {
@@ -1001,107 +929,362 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
     }
 
     chipClassRef.current = FloatingLocationChip;
-  }, [isGoogleMapLoaded]);
+  }, [engine, isMapReady]);
 
-  // IN-PLACE RECONCILIATION OF MARKERS, PULSING RADAR RINGS & PROFILE AVATARS (ZERO FLICKER)
+  // --------------------------------------------------------------------------
+  // RENDER MARKERS (GOOGLE MAPS OR OPENSTREETMAP)
+  // --------------------------------------------------------------------------
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const googleObj = (window as any).google;
-    if (!isGoogleMapLoaded || !googleMapInstanceRef.current || !googleObj?.maps) return;
-    if (!chipClassRef.current) return; // chip class not yet built
+    if (!isMapReady) return;
 
-    const map = googleMapInstanceRef.current;
-    const ChipClass = chipClassRef.current;
+    if (engine === 'osm') {
+      // OSM Leaflet Markers
+      const map = leafletMapRef.current;
+      if (!map) return;
+      const currentMarkers = leafletMarkersRef.current;
+      const activeIds = new Set(filteredSessions.map((s) => s.id));
 
-    const currentIds = new Set(filteredSessions.map((s) => s.id));
-    const handles = activeHandlesRef.current;
+      currentMarkers.forEach((marker, id) => {
+        if (!activeIds.has(id)) {
+          marker.remove();
+          currentMarkers.delete(id);
+        }
+      });
 
-    // 1. Cleanly remove markers no longer in current filtered scope
-    handles.forEach((handle, id) => {
-      if (!currentIds.has(id)) {
-        handle.destroy();
-        handles.delete(id);
-      }
-    });
+      filteredSessions.forEach((sess) => {
+        const isEmergency = sess.status === 'emergency';
+        const isDistress = sess.status === 'distress_pending';
+        const isSelected = selectedSession?.id === sess.id;
+        const initials = sess.userName
+          .split(' ')
+          .map((n: string) => n[0])
+          .join('')
+          .slice(0, 2)
+          .toUpperCase() || 'US';
 
-    // 2. Add or seamlessly update active markers & overlays in-place
-    filteredSessions.forEach((sess) => {
-      const isEmergency = sess.status === 'emergency';
-      const isDistress = sess.status === 'distress_pending';
-      const isSelected = selectedSession?.id === sess.id;
+        const ringClass = isEmergency
+          ? 'radar-ring radar-ring-red'
+          : isDistress
+          ? 'radar-ring radar-ring-amber'
+          : 'radar-ring radar-ring-green';
 
-      const existing = handles.get(sess.id);
-      if (existing) {
-        existing.marker.setPosition({ lat: sess.currentLocation.lat, lng: sess.currentLocation.lng });
-        existing.marker.setIcon({
-          path: googleObj.maps.SymbolPath.CIRCLE,
-          scale: isSelected ? 8 : isEmergency ? 7 : 6,
-          fillColor: isEmergency ? '#EF4444' : isDistress ? '#F59E0B' : '#10B981',
-          fillOpacity: 1,
-          strokeWeight: 2.5,
-          strokeColor: '#FFFFFF',
+        const ringSize = isEmergency ? 64 : 48;
+        const ringOffset = isEmergency ? -32 : -24;
+
+        const html = `
+          <div style="position: relative; width: 0; height: 0; pointer-events: auto; cursor: pointer;">
+            <div class="${ringClass}" style="width: ${ringSize}px; height: ${ringSize}px; top: ${ringOffset}px; left: ${ringOffset}px;"></div>
+            <div class="gmap-chip-tag" style="
+              border-color: ${isSelected ? 'var(--primary)' : isEmergency ? 'var(--alert-red)' : 'var(--border-hairline)'};
+              box-shadow: ${isSelected ? '0 6px 22px rgba(16, 185, 129, 0.25)' : '0 4px 18px rgba(15, 23, 42, 0.12)'};
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              background: #FFFFFF;
+              padding: 4px 8px;
+              border-radius: 9999px;
+              border-width: 1.5px;
+              border-style: solid;
+              white-space: nowrap;
+              transform: translate(-50%, -50%);
+            ">
+              <div class="profile-avatar ${isEmergency ? 'profile-avatar-emergency' : isDistress ? 'profile-avatar-distress' : ''}">
+                ${initials}
+                ${isEmergency ? '<span style="position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background-color: #EF4444; border: 1.5px solid #FFFFFF;"></span>' : ''}
+              </div>
+              <div style="display: flex; flex-direction: column;">
+                <div style="font-size: 11px; font-weight: 700; color: ${isEmergency ? '#DC2626' : '#0F172A'}; line-height: 1.15;">
+                  ${sess.userName} ${isEmergency ? '• SOS' : ''}
+                </div>
+                <div style="font-size: 9.5px; font-weight: 400; color: #64748B; margin-top: 1px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  ${sess.addressName || `${sess.currentLocation.lat.toFixed(3)}, ${sess.currentLocation.lng.toFixed(3)}`}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const icon = L.divIcon({
+          className: 'leaflet-custom-radar-marker',
+          html,
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
         });
-        existing.update(sess, isSelected);
-      } else {
-        const marker = new googleObj.maps.Marker({
-          position: { lat: sess.currentLocation.lat, lng: sess.currentLocation.lng },
-          map,
-          title: `${sess.userName} (${sess.status})`,
-          zIndex: isEmergency ? 100 : isDistress ? 50 : 30,
-          icon: {
+
+        const existing = currentMarkers.get(sess.id);
+        if (existing) {
+          existing.setLatLng([sess.currentLocation.lat, sess.currentLocation.lng]);
+          existing.setIcon(icon);
+          existing.setZIndexOffset(isEmergency ? 1000 : isDistress ? 500 : 100);
+        } else {
+          const marker = L.marker([sess.currentLocation.lat, sess.currentLocation.lng], {
+            icon,
+            zIndexOffset: isEmergency ? 1000 : isDistress ? 500 : 100,
+          }).addTo(map);
+
+          marker.on('click', () => handleSelectSession(sess));
+          currentMarkers.set(sess.id, marker);
+        }
+      });
+    } else {
+      // Google Maps Markers & OverlayView
+      const googleObj = (window as any).google;
+      if (!googleMapInstanceRef.current || !googleObj?.maps || !chipClassRef.current) return;
+
+      const map = googleMapInstanceRef.current;
+      const ChipClass = chipClassRef.current;
+      const currentIds = new Set(filteredSessions.map((s) => s.id));
+      const handles = activeHandlesRef.current;
+
+      handles.forEach((handle, id) => {
+        if (!currentIds.has(id)) {
+          handle.destroy();
+          handles.delete(id);
+        }
+      });
+
+      filteredSessions.forEach((sess) => {
+        const isEmergency = sess.status === 'emergency';
+        const isDistress = sess.status === 'distress_pending';
+        const isSelected = selectedSession?.id === sess.id;
+
+        const existing = handles.get(sess.id);
+        if (existing) {
+          existing.marker.setPosition({ lat: sess.currentLocation.lat, lng: sess.currentLocation.lng });
+          existing.marker.setIcon({
             path: googleObj.maps.SymbolPath.CIRCLE,
             scale: isSelected ? 8 : isEmergency ? 7 : 6,
             fillColor: isEmergency ? '#EF4444' : isDistress ? '#F59E0B' : '#10B981',
             fillOpacity: 1,
             strokeWeight: 2.5,
             strokeColor: '#FFFFFF',
-          },
+          });
+          existing.update(sess, isSelected);
+        } else {
+          const marker = new googleObj.maps.Marker({
+            position: { lat: sess.currentLocation.lat, lng: sess.currentLocation.lng },
+            map,
+            title: `${sess.userName} (${sess.status})`,
+            zIndex: isEmergency ? 100 : isDistress ? 50 : 30,
+            icon: {
+              path: googleObj.maps.SymbolPath.CIRCLE,
+              scale: isSelected ? 8 : isEmergency ? 7 : 6,
+              fillColor: isEmergency ? '#EF4444' : isDistress ? '#F59E0B' : '#10B981',
+              fillOpacity: 1,
+              strokeWeight: 2.5,
+              strokeColor: '#FFFFFF',
+            },
+          });
+
+          marker.addListener('click', () => handleSelectSession(sess));
+
+          const chip = new ChipClass(sess, isSelected, handleSelectSession);
+          chip.setMap(map);
+
+          handles.set(sess.id, {
+            marker,
+            overlay: chip,
+            update: (s: SafetySession, sel: boolean) => chip.update(s, sel, handleSelectSession),
+            destroy: () => {
+              marker.setMap(null);
+              chip.setMap(null);
+            },
+          });
+        }
+      });
+    }
+  }, [engine, isMapReady, filteredSessions, selectedSession, handleSelectSession]);
+
+  // --------------------------------------------------------------------------
+  // RENDER JURISDICTION BOUNDARIES (GOOGLE MAPS OR OPENSTREETMAP)
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    if (!isMapReady) return;
+
+    if (engine === 'osm') {
+      const map = leafletMapRef.current;
+      if (!map) return;
+
+      leafletBoundaryLayersRef.current.forEach((layer) => layer.remove());
+      leafletBoundaryLayersRef.current = [];
+
+      if (jurisdictionSettings.mode === 'global' || activePerimeter.level === 'global') return;
+
+      const renderPaths = (paths: { lat: number; lng: number }[][]) => {
+        leafletBoundaryLayersRef.current.forEach((layer) => layer.remove());
+        const newLayers: L.Layer[] = [];
+
+        paths.forEach((ring) => {
+          if (ring.length >= 3) {
+            const latLngs: L.LatLngExpression[] = ring.map((p) => [p.lat, p.lng]);
+            const polygon = L.polygon(latLngs, {
+              color: '#10B981',
+              weight: 2,
+              opacity: 0.75,
+              fillColor: '#10B981',
+              fillOpacity: 0.12,
+              dashArray: '4, 8',
+            }).addTo(map);
+
+            newLayers.push(polygon);
+          }
         });
 
-        marker.addListener('click', () => handleSelectSession(sess));
+        leafletBoundaryLayersRef.current = newLayers;
+      };
 
-        const chip = new ChipClass(sess, isSelected, handleSelectSession);
-        chip.setMap(map);
-
-        handles.set(sess.id, {
-          marker,
-          overlay: chip,
-          update: (s: SafetySession, sel: boolean) => chip.update(s, sel, handleSelectSession),
-          destroy: () => {
-            marker.setMap(null);
-            chip.setMap(null);
-          },
-        });
+      if (activePerimeter.boundary && activePerimeter.boundary.length >= 3) {
+        renderPaths([activePerimeter.boundary]);
       }
-    });
 
-  }, [isGoogleMapLoaded, filteredSessions, selectedSession, handleSelectSession]);
+      let isMounted = true;
+      const query = buildJurisdictionQuery(
+        activePerimeter.countryName,
+        activePerimeter.stateName,
+        activePerimeter.communityName
+      );
+
+      async function loadOsmBoundary() {
+        if (!query.trim()) return;
+        const level = activePerimeter.level === 'country' ? 'country' : activePerimeter.level === 'state' ? 'state' : 'community';
+        const geoJson = await fetchRealBoundaryGeoJson(query, activePerimeter.center, level);
+        if (isMounted && geoJson) {
+          const osmPaths = geoJsonToPolygonPaths(geoJson);
+          if (osmPaths.length > 0 && osmPaths[0].length >= 3) {
+            renderPaths(osmPaths);
+          }
+        }
+      }
+
+      loadOsmBoundary();
+
+      return () => {
+        isMounted = false;
+      };
+    } else {
+      // Google Maps Boundary Overlays
+      const googleObj = (window as any).google;
+      if (!googleMapInstanceRef.current || !googleObj?.maps) return;
+      const map = googleMapInstanceRef.current;
+
+      if (jurisdictionSettings.mode === 'global' || activePerimeter.level === 'global') {
+        googleBoundaryLayersRef.current.forEach((layer) => {
+          if (layer && typeof layer.setMap === 'function') layer.setMap(null);
+        });
+        googleBoundaryLayersRef.current = [];
+        return;
+      }
+
+      const query = buildJurisdictionQuery(
+        activePerimeter.countryName,
+        activePerimeter.stateName,
+        activePerimeter.communityName
+      );
+
+      googleBoundaryLayersRef.current.forEach((layer) => {
+        if (layer && typeof layer.setMap === 'function') layer.setMap(null);
+      });
+      googleBoundaryLayersRef.current = [];
+
+      let isMounted = true;
+      const lineSymbol = {
+        path: 'M 0,-1 0,1',
+        strokeOpacity: 1,
+        scale: 3.5,
+        strokeColor: '#059669',
+      };
+
+      const renderBoundaryLayers = (paths: { lat: number; lng: number }[][]) => {
+        if (!isMounted || paths.length === 0) return;
+
+        googleBoundaryLayersRef.current.forEach((layer) => {
+          if (layer && typeof layer.setMap === 'function') layer.setMap(null);
+        });
+        const newLayers: any[] = [];
+
+        const polygon = new googleObj.maps.Polygon({
+          paths,
+          strokeColor: '#10B981',
+          strokeOpacity: 0.65,
+          strokeWeight: 2,
+          fillColor: '#10B981',
+          fillOpacity: 0.12,
+          map,
+          clickable: false,
+          zIndex: 10,
+        });
+        newLayers.push(polygon);
+
+        paths.forEach((ring) => {
+          if (Array.isArray(ring) && ring.length >= 3) {
+            const polyline = new googleObj.maps.Polyline({
+              path: ring,
+              strokeOpacity: 0,
+              icons: [{ icon: lineSymbol, offset: '0', repeat: '12px' }],
+              map,
+              clickable: false,
+              zIndex: 12,
+            });
+            newLayers.push(polyline);
+          }
+        });
+
+        googleBoundaryLayersRef.current = newLayers;
+      };
+
+      if (activePerimeter.boundary && activePerimeter.boundary.length >= 3) {
+        renderBoundaryLayers([activePerimeter.boundary]);
+      }
+
+      async function loadOsmBoundary() {
+        if (!query.trim()) return;
+        const level = activePerimeter.level === 'country' ? 'country' : activePerimeter.level === 'state' ? 'state' : 'community';
+        const geoJson = await fetchRealBoundaryGeoJson(query, activePerimeter.center, level);
+        if (isMounted && geoJson) {
+          const osmPaths = geoJsonToPolygonPaths(geoJson);
+          if (osmPaths.length > 0 && osmPaths[0].length >= 3) {
+            renderBoundaryLayers(osmPaths);
+          }
+        }
+      }
+
+      loadOsmBoundary();
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [engine, isMapReady, activePerimeter, jurisdictionSettings.mode]);
 
   const handleZoom = useCallback((direction: 'in' | 'out') => {
-    if (!googleMapInstanceRef.current) return;
-    const currentZoom = googleMapInstanceRef.current.getZoom() || 13;
-    const center = googleMapInstanceRef.current.getCenter()?.toJSON() ?? (activePerimeter.center || { lat: 20, lng: 10 });
-    // Route through smoothFlyTo so zoom uses fractional interpolation rather than a hard snap
-    smoothFlyTo(center, currentZoom + (direction === 'in' ? 1 : -1));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePerimeter.center]);
+    if (engine === 'osm' && leafletMapRef.current) {
+      if (direction === 'in') leafletMapRef.current.zoomIn();
+      else leafletMapRef.current.zoomOut();
+    } else if (engine === 'googlemaps' && googleMapInstanceRef.current) {
+      const currentZoom = googleMapInstanceRef.current.getZoom() || 13;
+      const center = googleMapInstanceRef.current.getCenter()?.toJSON() ?? (activePerimeter.center || { lat: 20, lng: 10 });
+      smoothFlyTo(center, currentZoom + (direction === 'in' ? 1 : -1));
+    }
+  }, [engine, activePerimeter.center, smoothFlyTo]);
 
   const handleRecenter = useCallback(() => {
     if (selectedSession) {
-      smoothFlyTo({ lat: selectedSession.currentLocation.lat, lng: selectedSession.currentLocation.lng }, 15);
+      smoothFlyTo({ lat: selectedSession.currentLocation.lat, lng: selectedSession.currentLocation.lng }, 15.5);
     } else if (activePerimeter.center) {
       smoothFlyTo(activePerimeter.center, activePerimeter.zoom || 11);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSession, activePerimeter]);
+  }, [selectedSession, activePerimeter, smoothFlyTo]);
 
   const handleCopyDirections = useCallback((session: SafetySession) => {
-    const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${session.currentLocation.lat},${session.currentLocation.lng}`;
+    const directionsUrl = engine === 'osm'
+      ? `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=%3B${session.currentLocation.lat}%2C${session.currentLocation.lng}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${session.currentLocation.lat},${session.currentLocation.lng}`;
+
     navigator.clipboard.writeText(directionsUrl)
       .then(() => {
         notification.success({
           message: 'Directions Copied',
-          description: 'Google Maps directions link has been copied to your clipboard.',
+          description: 'Directions link has been copied to your clipboard.',
           placement: 'topRight',
           duration: 3,
         });
@@ -1114,7 +1297,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
           duration: 3,
         });
       });
-  }, []);
+  }, [engine]);
 
   return (
     <div style={{
@@ -1258,7 +1441,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                     className={`dispatch-card ${isEmergency ? 'dispatch-card-emergency' : isDistress ? 'dispatch-card-distress' : ''} ${isSelected ? 'dispatch-card-active' : ''}`}
                     style={{ padding: '0.6rem 0.7rem' }}
                   >
-                    {/* Card Header: Avatar + User Name & Single Status Badge */}
+                    {/* Card Header: Avatar + User Name & Status Badge */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', overflow: 'hidden' }}>
                         <div
@@ -1347,7 +1530,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                       </div>
                     </div>
 
-                    {/* Card Footer: Phone Number & Direct Quick Action Triggers */}
+                    {/* Card Footer: Phone Number & Direct Action Buttons */}
                     <div style={{
                       marginTop: '0.35rem',
                       paddingTop: '0.35rem',
@@ -1360,7 +1543,6 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                         {sess.userPhone || 'No contact set'}
                       </div>
 
-                      {/* Direct Quick Action Buttons (Telephone Dial & In-App Call) */}
                       <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
                         <a
                           href={sess.userPhone ? `tel:${sess.userPhone}` : undefined}
@@ -1442,7 +1624,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          zIndex: 25,
+          zIndex: 1000,
           pointerEvents: 'none',
         }}>
           
@@ -1531,7 +1713,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                 border: '1px solid var(--accent-green-border-subtle)',
                 boxShadow: '0 2px 10px rgba(15, 23, 42, 0.08)',
               }}>
-                {/* 1. Country Selector (Antd Searchable Single-Select) */}
+                {/* 1. Country Selector */}
                 <Select
                   showSearch
                   size="small"
@@ -1552,7 +1734,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
                 <span style={{ color: 'var(--border-hairline)' }}>|</span>
 
-                {/* 2. State Selector (Antd Searchable Single-Select) */}
+                {/* 2. State Selector */}
                 <Select
                   showSearch
                   size="small"
@@ -1574,7 +1756,7 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
                 <span style={{ color: 'var(--border-hairline)' }}>|</span>
 
-                {/* 3. Community / Sector Selector (Pure Google Maps Places live type-ahead) */}
+                {/* 3. Community / Sector Selector */}
                 <Select
                   showSearch
                   size="small"
@@ -1590,10 +1772,10 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
                   }}
                   notFoundContent={
                     isSearchingPlaces
-                      ? 'Searching Google Places...'
+                      ? `Searching ${engine === 'osm' ? 'OpenStreetMap' : 'Google Places'}...`
                       : communitySearchQuery.trim().length >= 1
-                      ? 'No matching communities found'
-                      : 'Type city or community name...'
+                      ? 'No matching locations found'
+                      : 'Type city or neighborhood...'
                   }
                   disabled={jurisdictionSettings.countryCode === 'ALL'}
                   value={jurisdictionSettings.communityId}
@@ -1679,14 +1861,14 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
 
         </div>
 
-        {/* Google Maps Viewport */}
+        {/* Map Viewport Container */}
         <div 
           ref={mapContainerRef} 
-          style={{ width: '100%', height: '100%', display: isGoogleMapLoaded ? 'block' : 'none' }} 
+          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, display: isMapReady ? 'block' : 'none' }} 
         />
 
-        {/* Fallback Clean Radar Grid when Google Maps key is not present */}
-        {!isGoogleMapLoaded && (
+        {/* Radar Fallback Grid if Map is loading/waiting */}
+        {!isMapReady && (
           <div style={{
             width: '100%',
             height: '100%',
@@ -1708,147 +1890,6 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
             }}>
               <div style={{ width: '280px', height: '280px', borderRadius: '50%', border: '1px solid #E2E8F0', position: 'absolute' }} />
               <div style={{ width: '140px', height: '140px', borderRadius: '50%', border: '1px solid #E2E8F0', position: 'absolute' }} />
-
-              {/* Active Community Perimeter Scope Highlight on Radar Scope */}
-              {activePerimeter && activePerimeter.level === 'community' && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '12px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.94)',
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: 'var(--radius-pill)',
-                  border: '1px solid var(--accent-green-border-subtle)',
-                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.45rem',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: 'var(--accent-green-dark)',
-                  zIndex: 15,
-                }}>
-                  <CountryFlag code={activePerimeter?.countryCode} size={12} />
-                  <span>{activePerimeter.scopeLabel} • Area Selected ({activePerimeter.center.lat.toFixed(4)}, {activePerimeter.center.lng.toFixed(4)})</span>
-                </div>
-              )}
-
-              {filteredSessions.map((sess, idx) => {
-                const isEmergency = sess.status === 'emergency';
-                const isDistress = sess.status === 'distress_pending';
-                const isSelected = selectedSession?.id === sess.id;
-                const initials = sess.userName
-                  .split(' ')
-                  .map((n: string) => n[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase() || 'US';
-
-                // Offsets for the radar scope pins
-                const xOffsets = [-120, 90, -40, 130, -100, 50];
-                const yOffsets = [-80, -60, 80, 70, 30, -110];
-                const x = xOffsets[idx % xOffsets.length];
-                const y = yOffsets[idx % yOffsets.length];
-
-                return (
-                  <div
-                    key={sess.id}
-                    onClick={() => handleSelectSession(sess)}
-                    style={{
-                      position: 'absolute',
-                      transform: `translate(${x}px, ${y}px)`,
-                      cursor: 'pointer',
-                      zIndex: isSelected ? 20 : 10,
-                      transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease',
-                    }}
-                  >
-                    {/* Radar Ring */}
-                    <div
-                      className={
-                        isEmergency
-                          ? 'radar-ring radar-ring-red'
-                          : isDistress
-                          ? 'radar-ring radar-ring-amber'
-                          : 'radar-ring radar-ring-green'
-                      }
-                      style={{
-                        width: isEmergency ? '64px' : '48px',
-                        height: isEmergency ? '64px' : '48px',
-                        top: isEmergency ? '-32px' : '-24px',
-                        left: isEmergency ? '-32px' : '-24px',
-                      }}
-                    />
-
-                    {/* Floating Location Chip with Profile Avatar */}
-                    <div
-                      className="gmap-chip-tag"
-                      style={{
-                        position: 'relative',
-                        transform: 'none',
-                        borderColor: isSelected
-                          ? 'var(--primary)'
-                          : isEmergency
-                          ? 'var(--alert-red)'
-                          : 'var(--border-hairline)',
-                        boxShadow: isSelected
-                          ? '0 6px 22px rgba(16, 185, 129, 0.25)'
-                          : '0 4px 18px rgba(15, 23, 42, 0.12)',
-                      }}
-                    >
-                      <div
-                        className={`profile-avatar ${
-                          isEmergency
-                            ? 'profile-avatar-emergency'
-                            : isDistress
-                            ? 'profile-avatar-distress'
-                            : ''
-                        }`}
-                      >
-                        {initials}
-                        {isEmergency && (
-                          <span
-                            style={{
-                              position: 'absolute',
-                              top: '-2px',
-                              right: '-2px',
-                              width: '8px',
-                              height: '8px',
-                              borderRadius: '50%',
-                              backgroundColor: '#EF4444',
-                              border: '1.5px solid #FFFFFF',
-                            }}
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <div
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: isEmergency ? '#DC2626' : '#0F172A',
-                            lineHeight: 1.15,
-                          }}
-                        >
-                          {sess.userName} {isEmergency ? '• Emergency' : ''}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: '9.5px',
-                            fontWeight: 400,
-                            color: '#64748B',
-                            maxWidth: '140px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            marginTop: '1px',
-                          }}
-                        >
-                          {sess.addressName || 'Current Location'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}
@@ -2041,7 +2082,10 @@ export const LiveRadarMap: React.FC<LiveRadarMapProps> = ({
               </button>
 
               <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${selectedSession.currentLocation.lat},${selectedSession.currentLocation.lng}`}
+                href={engine === 'osm'
+                  ? `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=%3B${selectedSession.currentLocation.lat}%2C${selectedSession.currentLocation.lng}`
+                  : `https://www.google.com/maps/dir/?api=1&destination=${selectedSession.currentLocation.lat},${selectedSession.currentLocation.lng}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-outline"
